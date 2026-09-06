@@ -26,6 +26,16 @@ from agents.reviewer import (
     create_reviewer_agent,
     reviewer_agent,
 )
+from agents.review_orchestrator import (
+    REVIEW_ORCHESTRATOR_INSTRUCTION,
+    ReviewOrchestratorAgent,
+    create_review_orchestrator_agent,
+    review_orchestrator_agent,
+)
+from agents.loop_agent import (
+    create_loop_agent,
+    loop_agent,
+)
 from agents.root_greeter import (
     ROOT_GREETER_INSTRUCTION,
     RootGreeterAgent,
@@ -42,7 +52,9 @@ __all__ = [
     "INGESTION_INSTRUCTION",
     "IngestionAgent",
     "REVIEWER_INSTRUCTION",
+    "REVIEW_ORCHESTRATOR_INSTRUCTION",
     "ReviewerAgent",
+    "ReviewOrchestratorAgent",
     "ROOT_GREETER_INSTRUCTION",
     "RootGreeterAgent",
     "StubIngestionAgent",
@@ -50,6 +62,8 @@ __all__ = [
     "create_critic_agent",
     "create_curation_agent",
     "create_ingestion_agent",
+    "create_loop_agent",
+    "create_review_orchestrator_agent",
     "create_reviewer_agent",
     "create_root_greeter_agent",
     "critic_agent",
@@ -57,6 +71,8 @@ __all__ = [
     "get_app",
     "get_root_agent",
     "ingestion_agent",
+    "loop_agent",
+    "review_orchestrator_agent",
     "reviewer_agent",
     "root_agent",
     "root_greeter_agent",

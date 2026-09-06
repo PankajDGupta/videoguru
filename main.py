@@ -236,6 +236,30 @@ def parse_arguments() -> argparse.Namespace:
         metavar="EDL_PATH",
         help="Run Critic Agent to evaluate an Edit Decision List from human viewer and thumbnail perspective (SPEC-011).",
     )
+    parser.add_argument(
+        "--loop",
+        type=str,
+        nargs="?",
+        const=str(settings.MEDIA_INPUT_DIR),
+        default=None,
+        metavar="DIR_PATH",
+        help="Run the full LoopAgent pipeline (Curation -> Reviewer -> Critic) on a given media directory (SPEC-012).",
+    )
+
+    parser.add_argument(
+        "--to-otio",
+        type=str,
+        default=None,
+        metavar="EDL_JSON_PATH",
+        help="Convert an Edit Decision List (EDL) JSON file to OpenTimelineIO format (.otio) (SPEC-013).",
+    )
+    parser.add_argument(
+        "--review-draft",
+        type=str,
+        default=None,
+        metavar="EDL_JSON_PATH",
+        help="Run Review Orchestrator Agent to convert EDL to OTIO and present review summary (SPEC-014).",
+    )
 
     parser.add_argument(
         "--web",
@@ -465,6 +489,233 @@ def main() -> None:
             print("=" * 60)
         except Exception as exc:
             print(f"Critic review failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    if args.loop:
+        from tools.ingestion_tools import build_clip_manifest
+        from agents.loop_agent import create_loop_agent
+        from google.adk.runners import Runner
+        from google.adk.sessions import Session
+        
+        loop_theme = args.theme or "General highlights and engaging moments"
+        media_dir = args.loop
+        
+        print("=" * 60)
+        print("VideoGuru: Autonomous Editing Loop (SPEC-012)")
+        print(f"Theme:          {loop_theme}")
+        print(f"Media Source:   {media_dir}")
+        print(f"Execution Mode: {'Offline / Mock' if args.offline else 'Live API'}")
+        print("=" * 60)
+        
+        try:
+            manifest = build_clip_manifest(media_dir)
+            if not manifest:
+                print(f"No video clips discovered in directory '{media_dir}'.", file=sys.stderr)
+                sys.exit(1)
+                
+            print(f"Ingested {len(manifest)} clip(s). Starting LoopAgent...")
+            
+            session_id = f"loop_{uuid.uuid4().hex[:8]}"
+            session_mgr = get_session_manager()
+            state = {
+                "theme": loop_theme,
+                "clip_manifest": [c.model_dump() for c in manifest]
+            }
+            session = asyncio.run(
+                session_mgr.create_session(
+                    user_id=settings.DEFAULT_USER_ID,
+                    session_id=session_id,
+                    state=state
+                )
+            )
+            
+            loop_agent_instance = create_loop_agent(offline=args.offline)
+            runner = Runner(
+                app_name=settings.APP_NAME,
+                agent=loop_agent_instance,
+                session_service=get_session_service()
+            )
+            
+            content = types.Content(parts=[types.Part.from_text(text="Start editing loop.")])
+            responses = []
+            
+            async def run_loop():
+                async for event in runner.run_async(
+                    user_id=settings.DEFAULT_USER_ID,
+                    session_id=session_id,
+                    new_message=content
+                ):
+                    if event.content and event.content.parts:
+                        for part in event.content.parts:
+                            if getattr(part, "text", None):
+                                responses.append(f"[{event.author}] {part.text}")
+            
+            asyncio.run(run_loop())
+            
+            print("-" * 60)
+            for resp in responses:
+                print(f"{resp}\n")
+            print("-" * 60)
+            
+            final_state = asyncio.run(
+                session_mgr.get_state(
+                    user_id=settings.DEFAULT_USER_ID,
+                    session_id=session_id
+                )
+            )
+            print("Final Loop Status:", final_state.get("loop_status"))
+            if final_state.get("loop_status") == "exited":
+                print("Success! Autonomous loop converged.")
+            else:
+                print("Max iterations reached without convergence.")
+            print("=" * 60)
+            
+        except Exception as exc:
+            print(f"Loop execution failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    if args.to_otio:
+        from pathlib import Path
+        from schemas.edl import EditDecisionList
+        from tools.ingestion_tools import build_clip_manifest
+        from tools.otio_converter import edl_to_otio
+
+        edl_path = Path(args.to_otio)
+        media_dir = args.ingest_dir or settings.MEDIA_INPUT_DIR
+
+        print("=" * 60)
+        print("VideoGuru: Convert EDL to OpenTimelineIO (SPEC-013)")
+        print(f"Target EDL:     {edl_path}")
+        print(f"Media Source:   {media_dir}")
+        print("=" * 60)
+
+        if not edl_path.exists():
+            print(f"Error: Target EDL file not found at '{edl_path}'.", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            edl = EditDecisionList.from_file(edl_path)
+            manifest = build_clip_manifest(media_dir)
+            
+            if not manifest:
+                print(f"No video clips discovered in directory '{media_dir}'.", file=sys.stderr)
+                sys.exit(1)
+                
+            otio_file = edl_to_otio(edl=edl, clip_manifest=manifest)
+            
+            print(f"Successfully converted EDL to OTIO.")
+            print(f"Output File: {otio_file}")
+            print("=" * 60)
+        except Exception as exc:
+            print(f"OTIO conversion failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    if args.review_draft:
+        from pathlib import Path
+        from schemas.edl import EditDecisionList
+        from tools.ingestion_tools import build_clip_manifest
+        from agents.review_orchestrator import create_review_orchestrator_agent
+        from google.adk.sessions import Session
+
+        edl_path = Path(args.review_draft)
+        media_dir = args.ingest_dir or settings.MEDIA_INPUT_DIR
+        theme = args.theme or "General highlights and engaging moments"
+
+        print("=" * 60)
+        print("VideoGuru: Review Orchestrator Agent (SPEC-014)")
+        print(f"Target EDL:     {edl_path}")
+        print(f"Media Source:   {media_dir}")
+        print(f"Theme:          {theme}")
+        print("=" * 60)
+
+        if not edl_path.exists():
+            print(f"Error: Target EDL file not found at '{edl_path}'.", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            edl = EditDecisionList.from_file(edl_path)
+            manifest = build_clip_manifest(media_dir)
+            
+            if not manifest:
+                print(f"No video clips discovered in directory '{media_dir}'.", file=sys.stderr)
+                sys.exit(1)
+                
+            session_id = f"review_{uuid.uuid4().hex[:8]}"
+            session_mgr = get_session_manager()
+            state = {
+                "theme": theme,
+                "edl": edl,
+                "clip_manifest": [c.model_dump() for c in manifest],
+                "review_status": "pending"
+            }
+            session = asyncio.run(
+                session_mgr.create_session(
+                    user_id=settings.DEFAULT_USER_ID,
+                    session_id=session_id,
+                    state=state
+                )
+            )
+            
+            agent = create_review_orchestrator_agent(offline=args.offline)
+            runner = Runner(
+                app_name=settings.APP_NAME,
+                agent=agent,
+                session_service=get_session_service()
+            )
+            
+            # First pass: present summary
+            print("Generating OTIO and review summary...\n")
+            responses = []
+            async def run_presentation():
+                async for event in runner.run_async(
+                    user_id=settings.DEFAULT_USER_ID,
+                    session_id=session_id,
+                    new_message=types.Content(parts=[types.Part.from_text(text="Please present the draft.")])
+                ):
+                    if event.content and event.content.parts:
+                        for part in event.content.parts:
+                            if getattr(part, "text", None):
+                                responses.append(part.text)
+            
+            asyncio.run(run_presentation())
+            for resp in responses:
+                print(resp)
+            print("=" * 60)
+            
+            # Second pass: simulate user input for testing CLI
+            user_input = input("Enter your review response (e.g., 'approve' or feedback): ")
+            print("\nProcessing response...\n")
+            
+            responses.clear()
+            async def run_feedback():
+                async for event in runner.run_async(
+                    user_id=settings.DEFAULT_USER_ID,
+                    session_id=session_id,
+                    new_message=types.Content(parts=[types.Part.from_text(text=user_input)])
+                ):
+                    if event.content and event.content.parts:
+                        for part in event.content.parts:
+                            if getattr(part, "text", None):
+                                responses.append(part.text)
+                                
+            asyncio.run(run_feedback())
+            for resp in responses:
+                print(resp)
+                
+            final_state = asyncio.run(
+                session_mgr.get_state(
+                    user_id=settings.DEFAULT_USER_ID,
+                    session_id=session_id
+                )
+            )
+            print("-" * 60)
+            print(f"Final Review Status: {final_state.get('review_status')}")
+            print("=" * 60)
+        except Exception as exc:
+            print(f"Review Orchestrator failed: {exc}", file=sys.stderr)
             sys.exit(1)
         return
 

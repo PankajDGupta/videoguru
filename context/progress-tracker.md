@@ -56,7 +56,7 @@
 |------|-------|--------|----------|-------|
 | SPEC-010 | Reviewer Agent (Algorithmic) | ✅ | Antigravity | ReviewerAgent implemented with review_edl_algorithmically tool, evaluating pacing (CPM, cadence variance), hook strength (first 5s), and retention curve, writes feedback & scores to session.state, CLI --review-edl added, 24 unit & integration tests passing (201 total tests passing) |
 | SPEC-011 | Critic Agent (Human-Centric) | ✅ | Antigravity | CriticAgent implemented with review_edl_as_critic tool, analyzing 30s hook AVD, thumbnail CTR viability, and emotional storytelling, integrated loop control via exit_loop (escalate=True) on pass and append_to_state on revision, CLI --critic added, 31 unit & integration tests passing (232 total tests passing) |
-| SPEC-012 | LoopAgent Assembly | ⬜ | — | Depends on SPEC-009, SPEC-010, SPEC-011 |
+| SPEC-012 | LoopAgent Assembly | ✅ | Antigravity | ADK LoopAgent wrapping CurationAgent → ReviewerAgent → CriticAgent, max_iterations safety circuit-breaker from settings.MAX_LOOP_ITERATIONS, exit_loop escalation breaks loop on pass, append_to_state persists revision feedback, create_loop_agent factory + singleton, CLI --loop added, 4 unit & integration tests passing (237 total tests passing) |
 
 ---
 
@@ -64,8 +64,8 @@
 
 | Spec | Title | Status | Assignee | Notes |
 |------|-------|--------|----------|-------|
-| SPEC-013 | OpenTimelineIO Converter Tool | ⬜ | — | — |
-| SPEC-014 | Review Orchestrator Agent | ⬜ | — | Depends on SPEC-013 |
+| SPEC-013 | OpenTimelineIO Converter Tool | ✅ | Antigravity | edl_to_otio tool implemented with _create_otio_timeline helper, creates Timeline with V1/A1 tracks, maps EDL entries to OTIO Clips with ExternalReference and TimeRange, saves .otio to staging dir, load_otio_timeline helper added, CLI --to-otio added, 5 unit tests passing |
+| SPEC-014 | Review Orchestrator Agent | ✅ | Antigravity | ReviewOrchestratorAgent implemented with edl_to_otio, prepare_review_summary, and process_user_review_response tools, converts EDL → .otio, presents draft summary, handles approve/revise flow with session state routing, CLI --review-draft added, 6 unit tests passing |
 | SPEC-015 | Gemini Live API Integration | ⬜ | — | Stretch goal |
 
 ---
@@ -118,10 +118,10 @@
 | Metric | Count |
 |--------|-------|
 | **Total Specs** | 30 |
-| **Completed** | 11 |
+| **Completed** | 14 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
-| **Not Started** | 19 |
+| **Not Started** | 16 |
 
 ---
 
@@ -139,14 +139,14 @@
 
 ## Next Steps
 
-- **SPEC-011 (Critic Agent (Human-Centric)) is 100% complete and unit tested.**
-- Next Step: Proceed with Phase III: **SPEC-012** (LoopAgent Assembly).
-  - Wire `CurationAgent`, `ReviewerAgent`, and `CriticAgent` into an ADK `LoopAgent`.
-  - Configure max iterations (e.g., 5) as a safety circuit-breaker.
-  - Wire `exit_loop` and `append_to_state` tools to coordinate iteration convergence.
-  - Test the loop with mock and real EDL data to verify autonomous convergence to approval.
-
-
-
+- **Phase III (Autonomous AI Review Loop) is 100% complete.** SPEC-010, SPEC-011, and SPEC-012 all implemented and tested.
+- **Phase IV (Human-in-the-Loop Review) MVP is 100% complete.** SPEC-013 and SPEC-014 implemented and tested.
+  - SPEC-015 (Gemini Live API Integration) is a stretch goal — deferred.
+- **Next: Proceed to Phase V (Rendering & Post-Production).**
+  - SPEC-016 (FFmpeg Command Builder) — no dependencies, ready to start.
+  - SPEC-017 (Transition Rendering Tool) — depends on SPEC-016.
+  - SPEC-018 (Audio Ducking Tool) — depends on SPEC-016.
+  - SPEC-019 (Whisper Captioning Tool) — independent.
+  - SPEC-020 (Enhancement & Rendering Agent) — depends on SPEC-016–019.
 
 
