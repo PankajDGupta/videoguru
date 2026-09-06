@@ -46,7 +46,7 @@
 |------|-------|--------|----------|-------|
 | SPEC-007 | Pydantic EDL Schema | ✅ | Antigravity | TransitionIntent enum, EDLEntry & EditDecisionList models implemented, validation rules (end > start, clip references), CLI --validate-edl added, 42 unit tests passing |
 | SPEC-008 | Gemini Video Analysis Tool | ✅ | Antigravity | analyze_clip tool implemented using Gemini 2.0 Flash multimodal API, EDLEntry structured output enforced with engagement scoring, guaranteed Files API resource cleanup, offline/mock mode supported, CLI --analyze-clip added, 19 unit & integration tests passing (162 total tests passing) |
-| SPEC-009 | Curation Agent | ⬜ | — | Depends on SPEC-007, SPEC-008 |
+| SPEC-009 | Curation Agent | ✅ | Antigravity | CurationAgent implemented with assemble_edl_from_manifest and curate_edit_decision_list tools, stores EDL in session.state['edl'], supports .env loading and offline mode, CLI --curate added, 15 unit & integration tests passing (177 total tests passing) |
 
 ---
 
@@ -118,10 +118,10 @@
 | Metric | Count |
 |--------|-------|
 | **Total Specs** | 30 |
-| **Completed** | 8 |
+| **Completed** | 9 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
-| **Not Started** | 22 |
+| **Not Started** | 21 |
 
 ---
 
@@ -139,13 +139,12 @@
 
 ## Next Steps
 
-- **SPEC-008 (Gemini Video Analysis Tool) is 100% complete and unit tested.**
-- Next Step: Proceed with Phase II: **SPEC-009** (Curation Agent).
-  - Implement the `CurationAgent`.
-  - Iterate through the clip manifest from session state.
-  - Call `analyze_clip` for each clip, cross-referencing against the stored theme.
-  - Assemble the initial **Edit Decision List** (JSON array of `EDLEntry`).
-  - Store EDL in session state: `session.state["edl"]`.
+- **SPEC-009 (Curation Agent) is 100% complete and unit tested.**
+- Next Step: Proceed with Phase III: **SPEC-010** (Reviewer Agent (Algorithmic)).
+  - Implement the `ReviewerAgent` in `agents/reviewer.py`.
+  - Verify algorithmic checks: pacing variance, transition validity, duration constraints, audio clash checks against the generated EDL.
+  - Write review feedback and scoring into session state.
+
 
 
 

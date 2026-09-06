@@ -247,7 +247,8 @@ def analyze_clip(
     )
 
     # 4. Check for offline / mock execution mode
-    has_api_key = bool(os.getenv("GEMINI_API_KEY"))
+    resolved_api_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
+    has_api_key = bool(resolved_api_key)
     is_offline = offline or (client is None and not has_api_key and offline)
 
     if is_offline:
@@ -262,12 +263,12 @@ def analyze_clip(
 
     if client is None and not has_api_key:
         raise ValueError(
-            "GEMINI_API_KEY environment variable is not set. Please provide a valid Gemini API key, "
-            "pass an initialized genai.Client instance, or set offline=True."
+            "GEMINI_API_KEY environment variable is not set. Please set GEMINI_API_KEY in your .env file, "
+            "provide an initialized genai.Client instance, or set offline=True."
         )
 
     # 5. Initialize client if needed
-    active_client = client if client is not None else genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    active_client = client if client is not None else genai.Client(api_key=resolved_api_key)
     active_model = model or settings.GEMINI_MODEL or "gemini-2.0-flash"
 
     # 6. Upload file to Gemini Files API and ensure guaranteed cleanup

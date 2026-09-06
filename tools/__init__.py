@@ -5,6 +5,11 @@ from tools.clip_metadata import (
     find_ffprobe_executable,
     probe_video_file,
 )
+from tools.curation_tools import (
+    assemble_edl_from_manifest,
+    curate_edit_decision_list,
+    get_edl_from_state,
+)
 from tools.directory_scanner import (
     SUPPORTED_VIDEO_EXTENSIONS,
     extract_file_basic_metadata,
@@ -26,12 +31,15 @@ from tools.video_analysis import (
 __all__ = [
     "SUPPORTED_VIDEO_EXTENSIONS",
     "analyze_clip",
+    "assemble_edl_from_manifest",
     "build_analysis_prompt",
     "build_clip_manifest",
+    "curate_edit_decision_list",
     "extract_clip_metadata",
     "extract_file_basic_metadata",
     "find_ffprobe_executable",
     "get_clip_manifest_from_state",
+    "get_edl_from_state",
     "get_theme_from_state",
     "ingest_media_directory",
     "mock_clip_analysis",

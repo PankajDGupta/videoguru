@@ -211,6 +211,12 @@ def parse_arguments() -> argparse.Namespace:
         help="Optional explicit clip identifier for --analyze-clip.",
     )
     parser.add_argument(
+        "--curate",
+        "--curate-edl",
+        action="store_true",
+        help="Run Curation Agent to analyze ingested media and assemble an Edit Decision List (SPEC-009).",
+    )
+    parser.add_argument(
         "--web",
         action="store_true",
         help="Launch the ADK Web UI server.",
@@ -294,6 +300,49 @@ def main() -> None:
             print("=" * 60)
         except Exception as exc:
             print(f"Metadata extraction failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    if args.curate:
+        from tools.curation_tools import assemble_edl_from_manifest
+        from tools.ingestion_tools import build_clip_manifest
+
+        curate_theme = args.theme or "General highlights and engaging moments"
+        media_dir = args.ingest_dir or settings.MEDIA_INPUT_DIR
+
+        print("=" * 60)
+        print("VideoGuru: Curating Edit Decision List (SPEC-009)")
+        print(f"Theme:          {curate_theme}")
+        print(f"Media Source:   {media_dir}")
+        print(f"Execution Mode: {'Offline / Mock' if args.offline else 'Gemini Multimodal Live API'}")
+        print("=" * 60)
+        try:
+            manifest = build_clip_manifest(media_dir)
+            if not manifest:
+                print(f"No video clips discovered in directory '{media_dir}'. Ingestion yielded 0 clips.", file=sys.stderr)
+                sys.exit(1)
+
+            print(f"Discovered {len(manifest)} clip(s). Analyzing and curating narrative cuts...\n")
+            edl = assemble_edl_from_manifest(
+                manifest=manifest,
+                theme=curate_theme,
+                offline=args.offline,
+            )
+            print("-" * 60)
+            print(f"Curated EDL successfully assembled with {len(edl)} cut(s):")
+            print(f"Total Duration:    {edl.total_duration:.2f} s")
+            print(f"Unique Clips Used: {len(edl.clip_references)} ({', '.join(sorted(edl.clip_references))})")
+            print("-" * 60)
+            for idx, entry in enumerate(edl, 1):
+                score_str = f", score={entry.engagement_score:.1f}" if entry.engagement_score is not None else ""
+                print(
+                    f"  [{idx}] {entry.file_reference}: {entry.start_trim:.2f}s -> {entry.end_trim:.2f}s "
+                    f"({entry.duration:.2f}s, transition={entry.transition_intent.value}{score_str})"
+                )
+                print(f"      Rationale: {entry.scene_rationale}")
+            print("=" * 60)
+        except Exception as exc:
+            print(f"Curation failed: {exc}", file=sys.stderr)
             sys.exit(1)
         return
 
