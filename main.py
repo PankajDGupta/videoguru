@@ -198,6 +198,19 @@ def parse_arguments() -> argparse.Namespace:
         help="Validate and inspect an Edit Decision List (EDL) JSON file (SPEC-007).",
     )
     parser.add_argument(
+        "--analyze-clip",
+        type=str,
+        default=None,
+        metavar="CLIP_PATH",
+        help="Analyze a video clip using Gemini 2.0 Flash multimodal API (SPEC-008).",
+    )
+    parser.add_argument(
+        "--clip-id",
+        type=str,
+        default=None,
+        help="Optional explicit clip identifier for --analyze-clip.",
+    )
+    parser.add_argument(
         "--web",
         action="store_true",
         help="Launch the ADK Web UI server.",
@@ -335,6 +348,37 @@ def main() -> None:
             print("=" * 60)
         except Exception as exc:
             print(f"EDL validation failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    if args.analyze_clip:
+        from tools.video_analysis import analyze_clip
+
+        analysis_theme = args.theme or "General highlights and engaging moments"
+        print("=" * 60)
+        print("VideoGuru: Analyzing Video Clip via Gemini 2.0 Flash (SPEC-008)")
+        print(f"Target Clip:    {args.analyze_clip}")
+        print(f"Theme:          {analysis_theme}")
+        print(f"Execution Mode: {'Offline / Mock' if args.offline else 'Gemini Multimodal Live API'}")
+        print("=" * 60)
+        try:
+            entry = analyze_clip(
+                clip_path=args.analyze_clip,
+                theme=analysis_theme,
+                clip_id=args.clip_id,
+                offline=args.offline,
+            )
+            score_str = f"{entry.engagement_score:.1f}/10.0" if entry.engagement_score is not None else "N/A"
+            print(f"File Reference:   {entry.file_reference}")
+            print(f"Start Trim:       {entry.start_trim:.3f} s")
+            print(f"End Trim:         {entry.end_trim:.3f} s")
+            print(f"Segment Duration: {entry.duration:.3f} s")
+            print(f"Transition:       {entry.transition_intent.value}")
+            print(f"Engagement Score: {score_str}")
+            print(f"Scene Rationale:  {entry.scene_rationale}")
+            print("=" * 60)
+        except Exception as exc:
+            print(f"Clip analysis failed: {exc}", file=sys.stderr)
             sys.exit(1)
         return
 

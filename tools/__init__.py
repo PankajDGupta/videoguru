@@ -17,9 +17,16 @@ from tools.ingestion_tools import (
     ingest_media_directory,
 )
 from tools.intent_tools import get_theme_from_state, record_theme
+from tools.video_analysis import (
+    analyze_clip,
+    build_analysis_prompt,
+    mock_clip_analysis,
+)
 
 __all__ = [
     "SUPPORTED_VIDEO_EXTENSIONS",
+    "analyze_clip",
+    "build_analysis_prompt",
     "build_clip_manifest",
     "extract_clip_metadata",
     "extract_file_basic_metadata",
@@ -27,6 +34,7 @@ __all__ = [
     "get_clip_manifest_from_state",
     "get_theme_from_state",
     "ingest_media_directory",
+    "mock_clip_analysis",
     "probe_video_file",
     "record_theme",
     "scan_local_directory",

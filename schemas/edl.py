@@ -74,6 +74,12 @@ class EDLEntry(BaseModel):
         default=TransitionIntent.CUT,
         description="Suggested visual transition to this or subsequent segment (cut, fade, wipe, slide, dissolve).",
     )
+    engagement_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=10.0,
+        description="Quality, narrative resonance, and thematic relevance score (0.0 to 10.0) evaluated by Gemini multimodal analysis.",
+    )
 
     @field_validator("file_reference")
     @classmethod

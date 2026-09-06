@@ -45,7 +45,7 @@
 | Spec | Title | Status | Assignee | Notes |
 |------|-------|--------|----------|-------|
 | SPEC-007 | Pydantic EDL Schema | ✅ | Antigravity | TransitionIntent enum, EDLEntry & EditDecisionList models implemented, validation rules (end > start, clip references), CLI --validate-edl added, 42 unit tests passing |
-| SPEC-008 | Gemini Video Analysis Tool | ⬜ | — | Requires Gemini API key |
+| SPEC-008 | Gemini Video Analysis Tool | ✅ | Antigravity | analyze_clip tool implemented using Gemini 2.0 Flash multimodal API, EDLEntry structured output enforced with engagement scoring, guaranteed Files API resource cleanup, offline/mock mode supported, CLI --analyze-clip added, 19 unit & integration tests passing (162 total tests passing) |
 | SPEC-009 | Curation Agent | ⬜ | — | Depends on SPEC-007, SPEC-008 |
 
 ---
@@ -118,10 +118,10 @@
 | Metric | Count |
 |--------|-------|
 | **Total Specs** | 30 |
-| **Completed** | 7 |
+| **Completed** | 8 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
-| **Not Started** | 23 |
+| **Not Started** | 22 |
 
 ---
 
@@ -139,12 +139,13 @@
 
 ## Next Steps
 
-- **SPEC-007 (Pydantic EDL Schema) is 100% complete and unit tested.**
-- Next Step: Proceed with Phase II: **SPEC-008** (Gemini Video Analysis Tool).
-  - Build custom ADK tool `analyze_clip(clip_path: str, theme: str)`.
-  - Use Gemini 2.0 Flash multimodal API to analyze the video file.
-  - Pass structured output schema (`EDLEntry`) to enforce deterministic JSON.
-  - Return the scored/analyzed clip data.
+- **SPEC-008 (Gemini Video Analysis Tool) is 100% complete and unit tested.**
+- Next Step: Proceed with Phase II: **SPEC-009** (Curation Agent).
+  - Implement the `CurationAgent`.
+  - Iterate through the clip manifest from session state.
+  - Call `analyze_clip` for each clip, cross-referencing against the stored theme.
+  - Assemble the initial **Edit Decision List** (JSON array of `EDLEntry`).
+  - Store EDL in session state: `session.state["edl"]`.
 
 
 
