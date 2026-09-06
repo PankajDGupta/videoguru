@@ -33,7 +33,7 @@
 | Spec | Title | Status | Assignee | Notes |
 |------|-------|--------|----------|-------|
 | SPEC-003 | Root Greeter Agent | ✅ | Antigravity | RootGreeterAgent implemented, custom record_theme tool stores theme in session.state['theme'] and hands off to Ingestion Agent, unit & integration tests passing |
-| SPEC-004 | Local Directory Scanner Tool | ⬜ | — | — |
+| SPEC-004 | Local Directory Scanner Tool | ✅ | Antigravity | Custom ADK tool scan_local_directory and scan_local_directory_with_metadata implemented using pathlib, ScannedVideoFile schema created, CLI --scan-dir added, unit & integration tests passing |
 | SPEC-005 | Clip Metadata Extraction Tool | ⬜ | — | Requires FFmpeg/ffprobe |
 | SPEC-006 | Ingestion Agent | ⬜ | — | Depends on SPEC-004, SPEC-005 |
 
@@ -117,10 +117,10 @@
 | Metric | Count |
 |--------|-------|
 | **Total Specs** | 30 |
-| **Completed** | 3 |
+| **Completed** | 4 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
-| **Not Started** | 27 |
+| **Not Started** | 26 |
 
 ---
 
@@ -138,6 +138,8 @@
 
 ## Next Steps
 
-- Proceed with Phase I: **SPEC-004** (Local Directory Scanner Tool).
-- Build custom ADK tool `scan_local_directory(directory_path: str)` using `pathlib`.
-- Recursively discover `.mp4`, `.mov`, `.avi`, and `.mkv` files and extract initial filesystem metadata.
+- Proceed with Phase I: **SPEC-005** (Clip Metadata Extraction Tool).
+- Build custom ADK tool `extract_clip_metadata(file_path: str)` using FFmpeg `ffprobe`.
+- Extract duration, frame rate, resolution, and codec, generating a UUID-based `clip_id`.
+- Return a structured `ClipManifestEntry` Pydantic model.
+

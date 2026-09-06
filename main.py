@@ -168,6 +168,13 @@ def parse_arguments() -> argparse.Namespace:
         help="Directly specify the video theme/highlight for intent capture.",
     )
     parser.add_argument(
+        "--scan-dir",
+        type=str,
+        default=None,
+        metavar="DIR_PATH",
+        help="Scan a local directory for video clips (.mp4, .mov, .avi, .mkv) and display basic metadata.",
+    )
+    parser.add_argument(
         "--web",
         action="store_true",
         help="Launch the ADK Web UI server.",
@@ -198,6 +205,35 @@ def main() -> None:
 
     if args.info:
         print_project_info()
+        return
+
+    if args.scan_dir:
+        from tools.directory_scanner import scan_local_directory_with_metadata
+
+        print("=" * 60)
+        print("VideoGuru: Scanning Local Directory for Media (SPEC-004)")
+        print(f"Target Directory: {args.scan_dir}")
+        print("=" * 60)
+        try:
+            files = scan_local_directory_with_metadata(args.scan_dir)
+            if not files:
+                print("No supported video files (.mp4, .mov, .avi, .mkv) found in directory.")
+            else:
+                print(f"Discovered {len(files)} video file(s):\n")
+                total_bytes = 0
+                for idx, f in enumerate(files, 1):
+                    size_mb = f.file_size_bytes / (1024 * 1024)
+                    total_bytes += f.file_size_bytes
+                    print(f"  [{idx}] {f.file_name} ({size_mb:.2f} MB)")
+                    print(f"      Path:     {f.path}")
+                    print(f"      Modified: {f.last_modified_iso}")
+                total_mb = total_bytes / (1024 * 1024)
+                print("-" * 60)
+                print(f"Total Media: {len(files)} file(s), {total_mb:.2f} MB")
+            print("=" * 60)
+        except Exception as exc:
+            print(f"Scan failed: {exc}", file=sys.stderr)
+            sys.exit(1)
         return
 
     if args.web:
