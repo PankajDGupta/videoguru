@@ -175,6 +175,14 @@ def parse_arguments() -> argparse.Namespace:
         help="Scan a local directory for video clips (.mp4, .mov, .avi, .mkv) and display basic metadata.",
     )
     parser.add_argument(
+        "--extract-metadata",
+        "-m",
+        type=str,
+        default=None,
+        metavar="FILE_PATH",
+        help="Extract video metadata using ffprobe and display ClipManifestEntry (SPEC-005).",
+    )
+    parser.add_argument(
         "--web",
         action="store_true",
         help="Launch the ADK Web UI server.",
@@ -233,6 +241,31 @@ def main() -> None:
             print("=" * 60)
         except Exception as exc:
             print(f"Scan failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    if args.extract_metadata:
+        from tools.clip_metadata import extract_clip_metadata
+
+        print("=" * 60)
+        print("VideoGuru: Extracting Clip Metadata via ffprobe (SPEC-005)")
+        print(f"Target Clip: {args.extract_metadata}")
+        print("=" * 60)
+        try:
+            entry = extract_clip_metadata(args.extract_metadata)
+            size_mb = entry.file_size_bytes / (1024 * 1024)
+            print(f"Clip ID:        {entry.clip_id}")
+            print(f"File Name:      {entry.file_name} ({size_mb:.2f} MB)")
+            print(f"Absolute Path:  {entry.absolute_path}")
+            print(f"Duration:       {entry.duration_seconds:.3f} s")
+            print(f"Frame Rate:     {entry.frame_rate:.2f} fps")
+            print(f"Resolution:     {entry.resolution} ({entry.width}x{entry.height})")
+            print(f"Video Codec:    {entry.video_codec}")
+            print(f"Audio Codec:    {entry.audio_codec or 'None'}")
+            print(f"Has Audio:      {'Yes' if entry.has_audio else 'No'}")
+            print("=" * 60)
+        except Exception as exc:
+            print(f"Metadata extraction failed: {exc}", file=sys.stderr)
             sys.exit(1)
         return
 

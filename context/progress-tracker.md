@@ -34,7 +34,7 @@
 |------|-------|--------|----------|-------|
 | SPEC-003 | Root Greeter Agent | ✅ | Antigravity | RootGreeterAgent implemented, custom record_theme tool stores theme in session.state['theme'] and hands off to Ingestion Agent, unit & integration tests passing |
 | SPEC-004 | Local Directory Scanner Tool | ✅ | Antigravity | Custom ADK tool scan_local_directory and scan_local_directory_with_metadata implemented using pathlib, ScannedVideoFile schema created, CLI --scan-dir added, unit & integration tests passing |
-| SPEC-005 | Clip Metadata Extraction Tool | ⬜ | — | Requires FFmpeg/ffprobe |
+| SPEC-005 | Clip Metadata Extraction Tool | ✅ | Antigravity | Custom ADK tool extract_clip_metadata and probe_video_file implemented using ffprobe, ClipManifestEntry schema created with UUID-based clip_id, CLI --extract-metadata added, unit & integration tests passing |
 | SPEC-006 | Ingestion Agent | ⬜ | — | Depends on SPEC-004, SPEC-005 |
 
 ---
@@ -117,10 +117,10 @@
 | Metric | Count |
 |--------|-------|
 | **Total Specs** | 30 |
-| **Completed** | 4 |
+| **Completed** | 5 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
-| **Not Started** | 26 |
+| **Not Started** | 25 |
 
 ---
 
@@ -138,8 +138,10 @@
 
 ## Next Steps
 
-- Proceed with Phase I: **SPEC-005** (Clip Metadata Extraction Tool).
-- Build custom ADK tool `extract_clip_metadata(file_path: str)` using FFmpeg `ffprobe`.
-- Extract duration, frame rate, resolution, and codec, generating a UUID-based `clip_id`.
-- Return a structured `ClipManifestEntry` Pydantic model.
+- Proceed with Phase I: **SPEC-006** (Ingestion Agent).
+- Implement `IngestionAgent` as a sequential agent.
+- Orchestrate `scan_local_directory` → `extract_clip_metadata` (per file).
+- Build the full **Clip Manifest** (list of `ClipManifestEntry`).
+- Store the manifest in session state: `session.state["clip_manifest"]`.
+
 
