@@ -183,6 +183,14 @@ def parse_arguments() -> argparse.Namespace:
         help="Extract video metadata using ffprobe and display ClipManifestEntry (SPEC-005).",
     )
     parser.add_argument(
+        "--ingest-dir",
+        "--ingest",
+        type=str,
+        default=None,
+        metavar="DIR_PATH",
+        help="Run Ingestion Agent on a directory to build and display the Clip Manifest (SPEC-006).",
+    )
+    parser.add_argument(
         "--web",
         action="store_true",
         help="Launch the ADK Web UI server.",
@@ -266,6 +274,38 @@ def main() -> None:
             print("=" * 60)
         except Exception as exc:
             print(f"Metadata extraction failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    if args.ingest_dir:
+        from tools.ingestion_tools import build_clip_manifest
+
+        print("=" * 60)
+        print("VideoGuru: Media Ingestion & Clip Manifest Construction (SPEC-006)")
+        print(f"Target Directory: {args.ingest_dir}")
+        print("=" * 60)
+        try:
+            manifest = build_clip_manifest(args.ingest_dir)
+            if not manifest:
+                print("No video clips found or ingested from directory.")
+            else:
+                total_duration = sum(c.duration_seconds for c in manifest)
+                total_bytes = sum(c.file_size_bytes for c in manifest)
+                total_mb = total_bytes / (1024 * 1024)
+                print(f"Ingested {len(manifest)} clip(s) [Total: {total_duration:.2f}s, {total_mb:.2f} MB]:\n")
+                for idx, c in enumerate(manifest, 1):
+                    audio_str = f"audio={c.audio_codec}" if c.has_audio else "silent"
+                    size_mb = c.file_size_bytes / (1024 * 1024)
+                    print(f"  [{idx}] {c.clip_id}: {c.file_name} ({size_mb:.2f} MB)")
+                    print(f"      Resolution: {c.resolution} ({c.width}x{c.height}) @ {c.frame_rate:.2f}fps")
+                    print(f"      Duration:   {c.duration_seconds:.3f} s")
+                    print(f"      Codecs:     video={c.video_codec}, {audio_str}")
+                    print(f"      Path:       {c.absolute_path}")
+                print("-" * 60)
+                print(f"Clip manifest successfully assembled with {len(manifest)} entries.")
+            print("=" * 60)
+        except Exception as exc:
+            print(f"Ingestion failed: {exc}", file=sys.stderr)
             sys.exit(1)
         return
 

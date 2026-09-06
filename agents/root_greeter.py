@@ -10,8 +10,10 @@ Responsible for Phase I Intent Capture:
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Any, AsyncGenerator, Optional
+
 
 from google.adk.agents import Agent
 from google.adk.events import Event, EventActions
@@ -84,10 +86,11 @@ class RootGreeterAgent(Agent):
         offline: bool = False,
         **kwargs: Any,
     ) -> None:
+        is_offline = offline if offline else not bool(os.getenv("GEMINI_API_KEY"))
         if tools is None:
             tools = [record_theme]
         if sub_agents is None:
-            sub_agents = [create_ingestion_agent()]
+            sub_agents = [create_ingestion_agent(offline=is_offline)]
 
         super().__init__(
             name=name,
@@ -96,7 +99,7 @@ class RootGreeterAgent(Agent):
             instruction=instruction,
             tools=tools,
             sub_agents=sub_agents,
-            offline=offline,
+            offline=is_offline,
             **kwargs,
         )
 

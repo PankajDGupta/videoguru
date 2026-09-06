@@ -35,7 +35,8 @@
 | SPEC-003 | Root Greeter Agent | ✅ | Antigravity | RootGreeterAgent implemented, custom record_theme tool stores theme in session.state['theme'] and hands off to Ingestion Agent, unit & integration tests passing |
 | SPEC-004 | Local Directory Scanner Tool | ✅ | Antigravity | Custom ADK tool scan_local_directory and scan_local_directory_with_metadata implemented using pathlib, ScannedVideoFile schema created, CLI --scan-dir added, unit & integration tests passing |
 | SPEC-005 | Clip Metadata Extraction Tool | ✅ | Antigravity | Custom ADK tool extract_clip_metadata and probe_video_file implemented using ffprobe, ClipManifestEntry schema created with UUID-based clip_id, CLI --extract-metadata added, unit & integration tests passing |
-| SPEC-006 | Ingestion Agent | ⬜ | — | Depends on SPEC-004, SPEC-005 |
+| SPEC-006 | Ingestion Agent | ✅ | Antigravity | IngestionAgent implemented with scan_local_directory and extract_clip_metadata orchestration, build_clip_manifest and ingest_media_directory tools created, Clip Manifest stored in session.state['clip_manifest'], CLI --ingest-dir added, unit & integration tests passing |
+
 
 ---
 
@@ -117,10 +118,10 @@
 | Metric | Count |
 |--------|-------|
 | **Total Specs** | 30 |
-| **Completed** | 5 |
+| **Completed** | 6 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
-| **Not Started** | 25 |
+| **Not Started** | 24 |
 
 ---
 
@@ -138,10 +139,10 @@
 
 ## Next Steps
 
-- Proceed with Phase I: **SPEC-006** (Ingestion Agent).
-- Implement `IngestionAgent` as a sequential agent.
-- Orchestrate `scan_local_directory` → `extract_clip_metadata` (per file).
-- Build the full **Clip Manifest** (list of `ClipManifestEntry`).
-- Store the manifest in session state: `session.state["clip_manifest"]`.
+- **Phase I (Intent Capture & Media Ingestion) is 100% complete!**
+- Proceed with Phase II: **SPEC-007** (Pydantic EDL Schema).
+- Define `EDLEntry` model (`file_reference`, `start_trim`, `end_trim`, `scene_rationale`, `transition_intent`).
+- Define `EditDecisionList` model.
+
 
 

@@ -1,7 +1,13 @@
 """VideoGuru Agents Package."""
 
 from agents.agent import app, get_app, get_root_agent, root_agent
-from agents.ingestion import StubIngestionAgent, create_ingestion_agent, ingestion_agent
+from agents.ingestion import (
+    INGESTION_INSTRUCTION,
+    IngestionAgent,
+    StubIngestionAgent,
+    create_ingestion_agent,
+    ingestion_agent,
+)
 from agents.root_greeter import (
     ROOT_GREETER_INSTRUCTION,
     RootGreeterAgent,
@@ -10,6 +16,8 @@ from agents.root_greeter import (
 )
 
 __all__ = [
+    "INGESTION_INSTRUCTION",
+    "IngestionAgent",
     "ROOT_GREETER_INSTRUCTION",
     "RootGreeterAgent",
     "StubIngestionAgent",
@@ -22,3 +30,4 @@ __all__ = [
     "root_agent",
     "root_greeter_agent",
 ]
+
