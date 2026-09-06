@@ -3,6 +3,11 @@
 from google.adk.agents import Agent
 from google.adk.apps import App
 
+from agents.root_greeter import (
+    RootGreeterAgent,
+    create_root_greeter_agent,
+    root_greeter_agent,
+)
 from config import settings
 
 ROOT_INSTRUCTION = (
@@ -12,13 +17,8 @@ ROOT_INSTRUCTION = (
     "to begin the autonomous curation and editing pipeline."
 )
 
-# Root agent instance for VideoGuru
-root_agent = Agent(
-    name="videoguru",
-    model=settings.GEMINI_MODEL,
-    description="VideoGuru Root Multi-Agent Orchestrator",
-    instruction=ROOT_INSTRUCTION,
-)
+# Root agent instance for VideoGuru — backed by RootGreeterAgent
+root_agent = create_root_greeter_agent(name="videoguru")
 
 # ADK App wrapping the root agent
 app = App(

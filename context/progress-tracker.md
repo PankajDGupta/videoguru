@@ -32,7 +32,7 @@
 
 | Spec | Title | Status | Assignee | Notes |
 |------|-------|--------|----------|-------|
-| SPEC-003 | Root Greeter Agent | ⬜ | — | — |
+| SPEC-003 | Root Greeter Agent | ✅ | Antigravity | RootGreeterAgent implemented, custom record_theme tool stores theme in session.state['theme'] and hands off to Ingestion Agent, unit & integration tests passing |
 | SPEC-004 | Local Directory Scanner Tool | ⬜ | — | — |
 | SPEC-005 | Clip Metadata Extraction Tool | ⬜ | — | Requires FFmpeg/ffprobe |
 | SPEC-006 | Ingestion Agent | ⬜ | — | Depends on SPEC-004, SPEC-005 |
@@ -117,10 +117,10 @@
 | Metric | Count |
 |--------|-------|
 | **Total Specs** | 30 |
-| **Completed** | 2 |
+| **Completed** | 3 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
-| **Not Started** | 28 |
+| **Not Started** | 27 |
 
 ---
 
@@ -138,7 +138,6 @@
 
 ## Next Steps
 
-- Proceed with Phase I: **SPEC-003** (Root Greeter Agent).
-- Build intent capture to store user's theme/highlight in `session.state["theme"]`.
-- Implement handoff to the Ingestion Agent.
-
+- Proceed with Phase I: **SPEC-004** (Local Directory Scanner Tool).
+- Build custom ADK tool `scan_local_directory(directory_path: str)` using `pathlib`.
+- Recursively discover `.mp4`, `.mov`, `.avi`, and `.mkv` files and extract initial filesystem metadata.
