@@ -13,3 +13,10 @@ OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", BASE_DIR / "output"))
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")
 MAX_LOOP_ITERATIONS = int(os.getenv("MAX_LOOP_ITERATIONS", "5"))
+
+# Application & Web Server Configuration
+APP_NAME = os.getenv("APP_NAME", "videoguru")
+WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
+WEB_PORT = int(os.getenv("WEB_PORT", "8000"))
+DEFAULT_USER_ID = os.getenv("DEFAULT_USER_ID", "videoguru_user")
+

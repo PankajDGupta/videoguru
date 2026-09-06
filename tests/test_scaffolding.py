@@ -9,7 +9,7 @@ import pytest
 
 def get_refreshed_path():
     """Retrieve full system PATH including any newly installed tools."""
-    # Combine current os.environ PATH with registry user/machine PATH if on Windows
+    # Combine current os.environ PATH  with registry user/machine PATH if on Windows
     paths = os.environ.get("PATH", "").split(os.pathsep)
     if os.name == "nt":
         import winreg

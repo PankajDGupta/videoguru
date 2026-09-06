@@ -23,7 +23,8 @@
 | Spec | Title | Status | Assignee | Notes |
 |------|-------|--------|----------|-------|
 | SPEC-001 | Initialize Project Structure | ✅ | Antigravity | Scaffolding created, virtual environment & dependencies installed, FFmpeg verified, unit tests passing |
-| SPEC-002 | ADK Project Bootstrap | ⬜ | — | Depends on SPEC-001 |
+| SPEC-002 | ADK Project Bootstrap | ✅ | Antigravity | Root agent & App configured, InMemorySessionService integrated, main.py CLI & Web UI launcher implemented, unit & integration tests passing |
+
 
 ---
 
@@ -116,10 +117,10 @@
 | Metric | Count |
 |--------|-------|
 | **Total Specs** | 30 |
-| **Completed** | 1 |
+| **Completed** | 2 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
-| **Not Started** | 29 |
+| **Not Started** | 28 |
 
 ---
 
@@ -137,6 +138,7 @@
 
 ## Next Steps
 
-- Proceed with **SPEC-002** (ADK Project Bootstrap).
-- Set up Gemini API key and verify FFmpeg installation.
-- Validate ADK web UI runs locally before proceeding to Phase I agents.
+- Proceed with Phase I: **SPEC-003** (Root Greeter Agent).
+- Build intent capture to store user's theme/highlight in `session.state["theme"]`.
+- Implement handoff to the Ingestion Agent.
+
