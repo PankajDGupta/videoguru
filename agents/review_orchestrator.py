@@ -84,10 +84,20 @@ class ReviewOrchestratorAgent(Agent):
         if self.offline:
             # First, determine if we are responding to a user review or presenting the summary
             user_input = ""
-            if hasattr(ctx, "new_message") and ctx.new_message and ctx.new_message.parts:
-                user_input = ctx.new_message.parts[0].text
-            elif hasattr(ctx.invocation_context, "new_message") and ctx.invocation_context.new_message and ctx.invocation_context.new_message.parts:
-                 user_input = ctx.invocation_context.new_message.parts[0].text
+            if hasattr(ctx, "new_message") and ctx.new_message and getattr(ctx.new_message, "parts", None):
+                user_input = " ".join(
+                    p.text for p in ctx.new_message.parts if getattr(p, "text", None)
+                ).strip()
+            elif hasattr(ctx, "user_content") and ctx.user_content and getattr(ctx.user_content, "parts", None):
+                user_input = " ".join(
+                    p.text for p in ctx.user_content.parts if getattr(p, "text", None)
+                ).strip()
+            elif getattr(ctx, "invocation_context", None) is not None:
+                inv_ctx = getattr(ctx, "invocation_context", None)
+                if getattr(inv_ctx, "new_message", None) and getattr(inv_ctx.new_message, "parts", None):
+                    user_input = " ".join(
+                        p.text for p in inv_ctx.new_message.parts if getattr(p, "text", None)
+                    ).strip()
                  
             state = ctx.session.state
             status = state.get("review_status", "")
@@ -165,6 +175,8 @@ class ReviewOrchestratorAgent(Agent):
                 return
 
             summary_text = prepare_review_summary(edl, theme, otio_path)
+            is_auto_approve = bool(state.get("auto_approve", False))
+            status_to_set = "approved" if is_auto_approve else "pending"
 
             yield Event(
                 author=self.name,
@@ -172,7 +184,8 @@ class ReviewOrchestratorAgent(Agent):
                 actions=EventActions(
                     state_delta={
                         "otio_file_path": otio_path,
-                        "review_status": "pending",
+                        "review_status": status_to_set,
+                        "review_approved": is_auto_approve,
                     }
                 ),
             )

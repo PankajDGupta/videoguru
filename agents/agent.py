@@ -35,3 +35,18 @@ def get_root_agent() -> Agent:
 def get_app() -> App:
     """Return the configured ADK App instance."""
     return app
+
+
+# Root workflow agent and factory exports (SPEC-025)
+from agents.root_pipeline import (
+    RootWorkflowAgent,
+    create_root_workflow_agent,
+    execute_pipeline,
+    root_workflow_agent,
+    run_pipeline_async,
+)
+
+
+def get_root_workflow_agent() -> RootWorkflowAgent:
+    """Return the configured root workflow agent instance."""
+    return root_workflow_agent

@@ -312,6 +312,27 @@ def parse_arguments() -> argparse.Namespace:
         help="Explicit destination path for rendered output video.",
     )
 
+    # Phase VII — Root Workflow Pipeline Arguments (SPEC-025)
+    parser.add_argument(
+        "--pipeline",
+        "--run-pipeline",
+        action="store_true",
+        help="Run the full VideoGuru root workflow pipeline end-to-end (SPEC-025).",
+    )
+    parser.add_argument(
+        "--input-dir",
+        type=str,
+        default=None,
+        metavar="DIR_PATH",
+        help="Media input directory for pipeline processing (alias for --ingest-dir).",
+    )
+    parser.add_argument(
+        "--auto-approve",
+        action="store_true",
+        default=True,
+        help="Auto-approve review draft during pipeline execution (default: True).",
+    )
+
     parser.add_argument(
         "--web",
         action="store_true",
@@ -339,6 +360,13 @@ def parse_arguments() -> argparse.Namespace:
 
 def main() -> None:
     """Main CLI entry point."""
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     args = parse_arguments()
 
     if args.info:
@@ -1059,6 +1087,57 @@ def main() -> None:
             print("=" * 60)
         except Exception as exc:
             print(f"Rendering pipeline failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    if args.pipeline:
+        from pathlib import Path
+        from agents.root_pipeline import create_root_workflow_agent
+
+        pipeline_theme = args.theme or "Travel vlog highlights"
+        media_dir = args.input_dir or args.ingest_dir or settings.MEDIA_INPUT_DIR
+
+        print("=" * 60)
+        print("VideoGuru: Root Workflow Pipeline Assembly (SPEC-025)")
+        print(f"Theme:          {pipeline_theme}")
+        print(f"Media Dir:      {media_dir}")
+        print(f"Music File:     {args.music_file or 'None'}")
+        print(f"Execution Mode: {'Offline Deterministic' if args.offline else 'Live Multi-Agent'}")
+        print("=" * 60)
+
+        initial_state = {
+            "theme": pipeline_theme,
+            "media_dir": str(media_dir),
+            "auto_approve": args.auto_approve,
+        }
+        if args.music_file:
+            initial_state["music_path"] = args.music_file
+
+        session_id = f"pipeline_{uuid.uuid4().hex[:8]}"
+
+        try:
+            agent = create_root_workflow_agent(offline=args.offline)
+            res = agent.execute_pipeline(
+                user_prompt=pipeline_theme,
+                session_id=session_id,
+                initial_state=initial_state,
+                auto_approve=args.auto_approve,
+                raise_on_error=True,
+            )
+
+            print("-" * 60)
+            print("🎬 VideoGuru Root Workflow Pipeline Completed Successfully!")
+            print(f"- Session ID:       {res['session_id']}")
+            print(f"- Theme:            {res['theme']}")
+            print(f"- Clips Ingested:   {len(res.get('clip_manifest') or [])}")
+            print(f"- Curated Cuts:     {len(res.get('edl') or [])}")
+            print(f"- OTIO Timeline:    {res.get('otio_file_path')}")
+            print(f"- Review Status:    {res.get('review_status')}")
+            print(f"- Final Video:      {res.get('final_video_path')}")
+            print(f"- Render Complete:  {res.get('rendering_complete')}")
+            print("=" * 60)
+        except Exception as exc:
+            print(f"Root workflow pipeline execution failed: {exc}", file=sys.stderr)
             sys.exit(1)
         return
 

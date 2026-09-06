@@ -86,10 +86,10 @@
 
 | Spec | Title | Status | Assignee | Notes |
 |------|-------|--------|----------|-------|
-| SPEC-021 | before_model_callback — Input Guardrail | ⬜ | — | — |
-| SPEC-022 | before_tool_callback — FFmpeg Sandboxing | ⬜ | — | — |
-| SPEC-023 | after_tool_callback — Error Recovery | ⬜ | — | — |
-| SPEC-024 | after_model_callback — Schema Validation | ⬜ | — | — |
+| SPEC-021 | before_model_callback — Input Guardrail | ✅ | Antigravity | input_guardrail module implemented with before_model_callback, check_prompt_safety regex engine blocking prompt injections/overrides/external URLs/system commands/sensitive files, sanitize_prompt, and LlmResponse short-circuiting with audit logging, 32 unit tests passing (416 total tests passing) |
+| SPEC-022 | before_tool_callback — FFmpeg Sandboxing | ✅ | Antigravity | tool_sandbox module implemented with before_tool_sandbox_callback, validate_ffmpeg_command, validate_path_confined, is_shell_safe, binary/flag whitelisting, directory confinement (media/staging/output/temp), shell injection blocking, and SecuritySandboxingError, 32 unit tests passing (448 total tests passing) |
+| SPEC-023 | after_tool_callback — Error Recovery | ✅ | Antigravity | error_recovery module implemented with after_tool_error_recovery_callback, on_tool_error_recovery_callback, parse_tool_error categorizing corrupt media/filter graph/dimension mismatch/codec/timeout/I-O errors, execute_with_retry backoff, and actionable self-correction feedback, 20 unit tests passing (468 total tests passing) |
+| SPEC-024 | after_model_callback — Schema Validation | ✅ | Antigravity | schema_validation module implemented with schema_validation_callback, extract_json_payload (fenced & raw JSON), validate_edl_data (Pydantic EDLEntry & EditDecisionList), clip manifest duration/ID cross-checking, and corrective regeneration LlmResponse, 15 unit tests passing (483 total tests passing) |
 
 ---
 
@@ -97,9 +97,9 @@
 
 | Spec | Title | Status | Assignee | Notes |
 |------|-------|--------|----------|-------|
-| SPEC-025 | Root Workflow Agent | ⬜ | — | Depends on all prior specs |
-| SPEC-026 | End-to-End Integration Test | ⬜ | — | Depends on SPEC-025 |
-| SPEC-027 | Configuration & Environment Setup | ⬜ | — | Can be done in parallel |
+| SPEC-025 | Root Workflow Agent | ✅ | Antigravity | RootWorkflowAgent implemented subclassing SequentialAgent with 5 subagents in sequence (Greeter -> Ingestion -> LoopAgent -> ReviewOrchestrator -> EnhancementRendering), all 4 Phase VI security callbacks registered across agent hierarchy, session state passthrough established, execute_pipeline and run_pipeline_async implemented, CLI --pipeline and --input-dir added, 14 unit & integration tests passing (528 total tests passing) |
+| SPEC-026 | End-to-End Integration Test | ✅ | Antigravity | Full e2e test suite created in tests/test_e2e_pipeline.py with synthetic media clips fixture, offline pipeline execution verifying manifest, EDL schema, OTIO timeline export, broadcast .mp4 render (ffprobe probed), session state passthrough, all 4 security callbacks enforcement, CLI execution via subprocess, and edge case resilience (empty directory & single-clip fallback); 9 unit & integration tests passing (537 total tests passing) |
+| SPEC-027 | Configuration & Environment Setup | ✅ | Antigravity | Centralized settings in config/settings.py, MEDIA_INPUT_DIR (input_videos) & OUTPUT_DIR (output_video) with legacy fallbacks, ensure_directories(), validate_settings(), reload_settings(), .env.example expanded, .gitignore updated, 28 unit tests passing (514 total tests passing) |
 
 ---
 
@@ -118,10 +118,10 @@
 | Metric | Count |
 |--------|-------|
 | **Total Specs** | 30 |
-| **Completed** | 20 |
+| **Completed** | 27 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
-| **Not Started** | 10 |
+| **Not Started** | 3 |
 
 ---
 
@@ -139,16 +139,14 @@
 
 ## Next Steps
 
-- **Phase V (Rendering & Post-Production) is 100% complete.**
-  - SPEC-016 (FFmpeg Command Builder) — ✅ Completed (55 tests).
-  - SPEC-017 (Transition Rendering Tool) — ✅ Completed (23 tests).
-  - SPEC-018 (Audio Ducking Tool) — ✅ Completed (17 tests).
-  - SPEC-019 (Whisper Captioning Tool) — ✅ Completed (25 tests).
-  - SPEC-020 (Enhancement & Rendering Agent) — ✅ Completed (10 tests).
-- **Next: Proceed to Phase VI (Security & Callbacks).**
-  - SPEC-021: `before_model_callback` — Input Guardrail.
-  - SPEC-022: `before_tool_callback` — FFmpeg Sandboxing.
-  - SPEC-023: `after_tool_callback` — Error Recovery.
-  - SPEC-024: `after_model_callback` — Schema Validation.
+- **Phase VII (Root Pipeline Assembly & Integration) is 100% complete.**
+  - SPEC-025: Root Workflow Agent (`SequentialAgent` wiring all 5 agents and callbacks) — ✅ Completed (14 tests).
+  - SPEC-026: End-to-End Integration Test — ✅ Completed (9 tests).
+  - SPEC-027: Configuration & Environment Setup — ✅ Completed (28 tests).
+- **Phase VIII (Polish & Deployment) is up next:**
+  - SPEC-028: Logging & Observability.
+  - SPEC-029: Error Handling & Graceful Degradation.
+  - SPEC-030: Documentation & README.
+
 
 

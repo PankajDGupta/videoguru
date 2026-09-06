@@ -31,6 +31,7 @@ def _create_mock_tool_context(initial_state: dict[str, Any] | None = None) -> To
     mock_invocation.session.state = initial_state if initial_state is not None else {}
     return ToolContext(invocation_context=mock_invocation, event_actions=actions)
 
+from config import settings
 from main import main
 from schemas.edl import EDLEntry, TransitionIntent
 from tools.clip_metadata import find_ffprobe_executable
@@ -163,6 +164,7 @@ class TestVideoAnalysisValidation:
 
     def test_missing_api_key_without_offline_raises_value_error(self, sample_video_clip, monkeypatch):
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.setattr(settings, "GEMINI_API_KEY", None)
         with pytest.raises(ValueError, match="GEMINI_API_KEY environment variable is not set"):
             analyze_clip(clip_path=str(sample_video_clip), theme="Travel vlog", offline=False)
 

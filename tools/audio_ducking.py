@@ -103,15 +103,19 @@ def apply_audio_ducking(
             resolved_music_path = Path(cleaned_music).resolve()
             is_explicit_music = True
     else:
-        # Check auto-discovery in MEDIA_INPUT_DIR
-        candidate_music = (settings.MEDIA_INPUT_DIR / "music.mp3").resolve()
-        if candidate_music.exists():
-            resolved_music_path = candidate_music
-            is_explicit_music = False
-            logger.info("Auto-discovered background music at %s", resolved_music_path)
-        else:
-            resolved_music_path = None
-            is_explicit_music = False
+        # Check auto-discovery in state media_dir or MEDIA_INPUT_DIR
+        search_dirs = []
+        if state is not None and state.get("media_dir"):
+            search_dirs.append(Path(state["media_dir"]))
+        search_dirs.append(settings.MEDIA_INPUT_DIR)
+
+        for sdir in search_dirs:
+            candidate_music = (sdir / "music.mp3").resolve()
+            if candidate_music.exists():
+                resolved_music_path = candidate_music
+                is_explicit_music = False
+                logger.info("Auto-discovered background music at %s", resolved_music_path)
+                break
 
     # 4. Handle missing music
     if resolved_music_path is None:

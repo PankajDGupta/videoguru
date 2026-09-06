@@ -48,6 +48,15 @@ from agents.root_greeter import (
     create_root_greeter_agent,
     root_greeter_agent,
 )
+from agents.root_pipeline import (
+    ROOT_PIPELINE_DESCRIPTION,
+    RootWorkflowAgent,
+    create_root_workflow_agent,
+    execute_pipeline,
+    root_workflow_agent,
+    run_pipeline_async,
+)
+from agents.agent import get_root_workflow_agent
 
 
 __all__ = [
@@ -64,7 +73,9 @@ __all__ = [
     "ReviewerAgent",
     "ReviewOrchestratorAgent",
     "ROOT_GREETER_INSTRUCTION",
+    "ROOT_PIPELINE_DESCRIPTION",
     "RootGreeterAgent",
+    "RootWorkflowAgent",
     "StubIngestionAgent",
     "app",
     "create_critic_agent",
@@ -75,17 +86,22 @@ __all__ = [
     "create_review_orchestrator_agent",
     "create_reviewer_agent",
     "create_root_greeter_agent",
+    "create_root_workflow_agent",
     "critic_agent",
     "curation_agent",
     "enhancement_rendering_agent",
+    "execute_pipeline",
     "get_app",
     "get_root_agent",
+    "get_root_workflow_agent",
     "ingestion_agent",
     "loop_agent",
     "review_orchestrator_agent",
     "reviewer_agent",
     "root_agent",
     "root_greeter_agent",
+    "root_workflow_agent",
+    "run_pipeline_async",
 ]
 
 

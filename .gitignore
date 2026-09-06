@@ -46,7 +46,9 @@ htmlcov/
 # Pipeline staging & output
 staging/
 output/
+output_video/
 media/
+input_videos/
 work_dir/
 *.mp4
 *.mov

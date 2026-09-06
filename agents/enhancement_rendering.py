@@ -158,11 +158,19 @@ class EnhancementRenderingAgent(Agent):
         elif state.get("music_path"):
             resolved_music = Path(state["music_path"]).resolve()
         else:
-            # Check for standard background music in MEDIA_INPUT_DIR
-            for candidate_name in ["music.mp3", "background.mp3", "bgm.mp3", "music.wav"]:
-                candidate = settings.MEDIA_INPUT_DIR / candidate_name
-                if candidate.is_file():
-                    resolved_music = candidate.resolve()
+            # Check for standard background music in media_dir or MEDIA_INPUT_DIR
+            search_dirs: list[Path] = []
+            if state.get("media_dir"):
+                search_dirs.append(Path(state["media_dir"]))
+            search_dirs.append(settings.MEDIA_INPUT_DIR)
+
+            for sdir in search_dirs:
+                for candidate_name in ["music.mp3", "background.mp3", "bgm.mp3", "music.wav"]:
+                    candidate = sdir / candidate_name
+                    if candidate.is_file():
+                        resolved_music = candidate.resolve()
+                        break
+                if resolved_music:
                     break
 
         ducked_path = transition_path
