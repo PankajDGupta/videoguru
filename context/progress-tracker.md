@@ -54,7 +54,7 @@
 
 | Spec | Title | Status | Assignee | Notes |
 |------|-------|--------|----------|-------|
-| SPEC-010 | Reviewer Agent (Algorithmic) | ⬜ | — | — |
+| SPEC-010 | Reviewer Agent (Algorithmic) | ✅ | Antigravity | ReviewerAgent implemented with review_edl_algorithmically tool, evaluating pacing (CPM, cadence variance), hook strength (first 5s), and retention curve, writes feedback & scores to session.state, CLI --review-edl added, 24 unit & integration tests passing (201 total tests passing) |
 | SPEC-011 | Critic Agent (Human-Centric) | ⬜ | — | — |
 | SPEC-012 | LoopAgent Assembly | ⬜ | — | Depends on SPEC-009, SPEC-010, SPEC-011 |
 
@@ -118,10 +118,10 @@
 | Metric | Count |
 |--------|-------|
 | **Total Specs** | 30 |
-| **Completed** | 9 |
+| **Completed** | 10 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
-| **Not Started** | 21 |
+| **Not Started** | 20 |
 
 ---
 
@@ -139,11 +139,16 @@
 
 ## Next Steps
 
-- **SPEC-009 (Curation Agent) is 100% complete and unit tested.**
-- Next Step: Proceed with Phase III: **SPEC-010** (Reviewer Agent (Algorithmic)).
-  - Implement the `ReviewerAgent` in `agents/reviewer.py`.
-  - Verify algorithmic checks: pacing variance, transition validity, duration constraints, audio clash checks against the generated EDL.
-  - Write review feedback and scoring into session state.
+- **SPEC-010 (Reviewer Agent (Algorithmic)) is 100% complete and unit tested.**
+- Next Step: Proceed with Phase III: **SPEC-011** (Critic Agent (Human-Centric)).
+  - Implement the `CriticAgent` in `agents/critic.py`.
+  - System prompt: act as a human viewer, thumbnail strategist, and narrative evaluator.
+  - Analyze the EDL for:
+    - 30-second hook / Average View Duration (AVD) potential.
+    - Click-Through Rate (CTR) and thumbnail frame viability.
+    - Emotional resonance and storytelling.
+  - Implement loop control actions (`exit_loop` tool to break LoopAgent on pass, or append critical feedback to state on fail).
+
 
 
 

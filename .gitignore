@@ -47,7 +47,9 @@ htmlcov/
 staging/
 output/
 media/
+work_dir/
 *.mp4
 *.mov
 *.otio
 *.srt
+

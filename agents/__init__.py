@@ -14,6 +14,12 @@ from agents.ingestion import (
     create_ingestion_agent,
     ingestion_agent,
 )
+from agents.reviewer import (
+    REVIEWER_INSTRUCTION,
+    ReviewerAgent,
+    create_reviewer_agent,
+    reviewer_agent,
+)
 from agents.root_greeter import (
     ROOT_GREETER_INSTRUCTION,
     RootGreeterAgent,
@@ -21,23 +27,29 @@ from agents.root_greeter import (
     root_greeter_agent,
 )
 
+
 __all__ = [
     "CURATION_INSTRUCTION",
     "CurationAgent",
     "INGESTION_INSTRUCTION",
     "IngestionAgent",
+    "REVIEWER_INSTRUCTION",
+    "ReviewerAgent",
     "ROOT_GREETER_INSTRUCTION",
     "RootGreeterAgent",
     "StubIngestionAgent",
     "app",
     "create_curation_agent",
     "create_ingestion_agent",
+    "create_reviewer_agent",
     "create_root_greeter_agent",
     "curation_agent",
     "get_app",
     "get_root_agent",
     "ingestion_agent",
+    "reviewer_agent",
     "root_agent",
     "root_greeter_agent",
 ]
+
 

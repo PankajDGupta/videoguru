@@ -217,6 +217,17 @@ def parse_arguments() -> argparse.Namespace:
         help="Run Curation Agent to analyze ingested media and assemble an Edit Decision List (SPEC-009).",
     )
     parser.add_argument(
+        "--review-edl",
+        "--review",
+        type=str,
+        nargs="?",
+        const="work_dir/edl.json",
+        default=None,
+        metavar="EDL_PATH",
+        help="Run Reviewer Agent to evaluate an Edit Decision List against YouTube algorithm metrics (SPEC-010).",
+    )
+
+    parser.add_argument(
         "--web",
         action="store_true",
         help="Launch the ADK Web UI server.",
@@ -346,7 +357,54 @@ def main() -> None:
             sys.exit(1)
         return
 
+    if args.review_edl:
+        from pathlib import Path
+        from schemas.edl import EditDecisionList
+        from tools.review_tools import review_edl_algorithmically
+
+        edl_path = Path(args.review_edl)
+        review_theme = args.theme or "General Highlights"
+
+        print("=" * 60)
+        print("VideoGuru: Reviewer Agent (Algorithmic Review - SPEC-010)")
+        print(f"Target EDL:     {edl_path}")
+        print(f"Theme:          {review_theme}")
+        print(f"Execution Mode: {'Offline Heuristics' if args.offline else 'Gemini 2.0 Flash / Heuristic Fallback'}")
+        print("=" * 60)
+
+        if not edl_path.exists():
+            print(f"Error: Target EDL file not found at '{edl_path}'.", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            edl = EditDecisionList.from_file(edl_path)
+            print(f"Loaded EDL with {len(edl)} cut(s) totaling {edl.total_duration:.2f}s.")
+            print("Executing algorithmic evaluation against YouTube recommendation metrics...\n")
+
+            result = review_edl_algorithmically(
+                edl=edl,
+                theme=review_theme,
+                offline=args.offline,
+            )
+
+            status_badge = "[PASS]" if result.passed else "[REVISE]"
+            print("=" * 60)
+            print(f"Algorithmic Verdict: {status_badge} ({'Passed' if result.passed else 'Revision Required'})")
+            print(f"Composite Score:     {result.score:.1f} / 10.0")
+            print(f"  - Hook Score:      {result.hook_score:.1f} / 10.0 (Duration: {result.hook_metrics.hook_duration:.2f}s, Punchy: {result.hook_metrics.is_punchy})")
+            print(f"  - Pacing Score:    {result.pacing_score:.1f} / 10.0 (Avg Cut: {result.pacing_metrics.avg_cut_duration:.2f}s, CPM: {result.pacing_metrics.cuts_per_minute:.1f})")
+            print(f"  - Retention Score: {result.retention_score:.1f} / 10.0 (Excessive Cuts: {result.pacing_metrics.excessive_cuts_count})")
+            print("-" * 60)
+            print("Feedback & Recommendations:\n")
+            print(result.feedback)
+            print("=" * 60)
+        except Exception as exc:
+            print(f"Algorithmic review failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+
     if args.ingest_dir:
+
         from tools.ingestion_tools import build_clip_manifest
 
         print("=" * 60)

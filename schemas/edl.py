@@ -262,6 +262,12 @@ class EditDecisionList(BaseModel):
         return cls.model_validate(raw_list)
 
     @classmethod
+    def from_dict_list(cls, raw_list: list[Any]) -> EditDecisionList:
+        """Alias for from_list."""
+        return cls.model_validate(raw_list)
+
+
+    @classmethod
     def from_json(cls, json_str: str) -> EditDecisionList:
         """Construct an EditDecisionList from a JSON string (either array or object with 'entries')."""
         data = json.loads(json_str)
