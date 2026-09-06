@@ -226,6 +226,16 @@ def parse_arguments() -> argparse.Namespace:
         metavar="EDL_PATH",
         help="Run Reviewer Agent to evaluate an Edit Decision List against YouTube algorithm metrics (SPEC-010).",
     )
+    parser.add_argument(
+        "--critic-review",
+        "--critic",
+        type=str,
+        nargs="?",
+        const="work_dir/edl.json",
+        default=None,
+        metavar="EDL_PATH",
+        help="Run Critic Agent to evaluate an Edit Decision List from human viewer and thumbnail perspective (SPEC-011).",
+    )
 
     parser.add_argument(
         "--web",
@@ -400,6 +410,61 @@ def main() -> None:
             print("=" * 60)
         except Exception as exc:
             print(f"Algorithmic review failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    if args.critic_review:
+        from pathlib import Path
+        from schemas.edl import EditDecisionList
+        from tools.critic_tools import review_edl_as_critic
+
+        edl_path = Path(args.critic_review)
+        critic_theme = args.theme or "General Highlights"
+
+        print("=" * 60)
+        print("VideoGuru: Critic Agent (Human-Centric Review - SPEC-011)")
+        print(f"Target EDL:     {edl_path}")
+        print(f"Theme:          {critic_theme}")
+        print(f"Execution Mode: {'Offline Heuristics' if args.offline else 'Gemini 2.0 Flash / Heuristic Fallback'}")
+        print("=" * 60)
+
+        if not edl_path.exists():
+            print(f"Error: Target EDL file not found at '{edl_path}'.", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            edl = EditDecisionList.from_file(edl_path)
+            print(f"Loaded EDL with {len(edl)} cut(s) totaling {edl.total_duration:.2f}s.")
+            print("Executing human-centric evaluation (30s hook, thumbnail CTR, storytelling)...\n")
+
+            class CliToolContext:
+                def __init__(self):
+                    self.state = {"theme": critic_theme, "edl": edl}
+                    self.actions = type("Actions", (), {"escalate": False, "skip_summarization": False})()
+
+            tool_ctx = CliToolContext()
+
+            result = review_edl_as_critic(
+                tool_context=tool_ctx,
+                edl=edl,
+                theme=critic_theme,
+                offline=args.offline,
+            )
+
+            status_badge = "[PASS]" if result.passed else "[REVISE]"
+            print("=" * 60)
+            print(f"Human-Centric Verdict: {status_badge} ({'Passed' if result.passed else 'Revision Required'})")
+            print(f"Overall Score:         {result.score:.1f} / 10.0")
+            print(f"  - 30s Hook AVD:      {result.hook_30s_score:.1f} / 10.0 (Dead Air: {'Yes' if result.hook_30s_metrics.has_dead_air else 'None'})")
+            print(f"  - Thumbnail CTR:     {result.thumbnail_score:.1f} / 10.0 (Candidate: {result.candidate_thumbnail.candidate_clip_reference} @ {result.candidate_thumbnail.candidate_timestamp:.2f}s)")
+            print(f"  - Storytelling:      {result.storytelling_score:.1f} / 10.0 (Theme Alignment: {result.storytelling_metrics.theme_alignment_score:.1f})")
+            print(f"Loop Action:           {result.loop_action} ({'exit_loop invoked -> advance to Phase IV' if result.passed else 'append_to_state invoked -> iterate loop'})")
+            print("-" * 60)
+            print("Feedback & Recommendations:\n")
+            print(result.feedback)
+            print("=" * 60)
+        except Exception as exc:
+            print(f"Critic review failed: {exc}", file=sys.stderr)
             sys.exit(1)
         return
 

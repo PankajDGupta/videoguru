@@ -55,7 +55,7 @@
 | Spec | Title | Status | Assignee | Notes |
 |------|-------|--------|----------|-------|
 | SPEC-010 | Reviewer Agent (Algorithmic) | ✅ | Antigravity | ReviewerAgent implemented with review_edl_algorithmically tool, evaluating pacing (CPM, cadence variance), hook strength (first 5s), and retention curve, writes feedback & scores to session.state, CLI --review-edl added, 24 unit & integration tests passing (201 total tests passing) |
-| SPEC-011 | Critic Agent (Human-Centric) | ⬜ | — | — |
+| SPEC-011 | Critic Agent (Human-Centric) | ✅ | Antigravity | CriticAgent implemented with review_edl_as_critic tool, analyzing 30s hook AVD, thumbnail CTR viability, and emotional storytelling, integrated loop control via exit_loop (escalate=True) on pass and append_to_state on revision, CLI --critic added, 31 unit & integration tests passing (232 total tests passing) |
 | SPEC-012 | LoopAgent Assembly | ⬜ | — | Depends on SPEC-009, SPEC-010, SPEC-011 |
 
 ---
@@ -118,10 +118,10 @@
 | Metric | Count |
 |--------|-------|
 | **Total Specs** | 30 |
-| **Completed** | 10 |
+| **Completed** | 11 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
-| **Not Started** | 20 |
+| **Not Started** | 19 |
 
 ---
 
@@ -139,15 +139,12 @@
 
 ## Next Steps
 
-- **SPEC-010 (Reviewer Agent (Algorithmic)) is 100% complete and unit tested.**
-- Next Step: Proceed with Phase III: **SPEC-011** (Critic Agent (Human-Centric)).
-  - Implement the `CriticAgent` in `agents/critic.py`.
-  - System prompt: act as a human viewer, thumbnail strategist, and narrative evaluator.
-  - Analyze the EDL for:
-    - 30-second hook / Average View Duration (AVD) potential.
-    - Click-Through Rate (CTR) and thumbnail frame viability.
-    - Emotional resonance and storytelling.
-  - Implement loop control actions (`exit_loop` tool to break LoopAgent on pass, or append critical feedback to state on fail).
+- **SPEC-011 (Critic Agent (Human-Centric)) is 100% complete and unit tested.**
+- Next Step: Proceed with Phase III: **SPEC-012** (LoopAgent Assembly).
+  - Wire `CurationAgent`, `ReviewerAgent`, and `CriticAgent` into an ADK `LoopAgent`.
+  - Configure max iterations (e.g., 5) as a safety circuit-breaker.
+  - Wire `exit_loop` and `append_to_state` tools to coordinate iteration convergence.
+  - Test the loop with mock and real EDL data to verify autonomous convergence to approval.
 
 
 

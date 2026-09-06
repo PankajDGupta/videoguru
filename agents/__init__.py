@@ -1,6 +1,12 @@
 """VideoGuru Agents Package."""
 
 from agents.agent import app, get_app, get_root_agent, root_agent
+from agents.critic import (
+    CRITIC_INSTRUCTION,
+    CriticAgent,
+    create_critic_agent,
+    critic_agent,
+)
 from agents.curation import (
     CURATION_INSTRUCTION,
     CurationAgent,
@@ -29,7 +35,9 @@ from agents.root_greeter import (
 
 
 __all__ = [
+    "CRITIC_INSTRUCTION",
     "CURATION_INSTRUCTION",
+    "CriticAgent",
     "CurationAgent",
     "INGESTION_INSTRUCTION",
     "IngestionAgent",
@@ -39,10 +47,12 @@ __all__ = [
     "RootGreeterAgent",
     "StubIngestionAgent",
     "app",
+    "create_critic_agent",
     "create_curation_agent",
     "create_ingestion_agent",
     "create_reviewer_agent",
     "create_root_greeter_agent",
+    "critic_agent",
     "curation_agent",
     "get_app",
     "get_root_agent",
