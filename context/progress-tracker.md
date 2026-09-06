@@ -44,7 +44,7 @@
 
 | Spec | Title | Status | Assignee | Notes |
 |------|-------|--------|----------|-------|
-| SPEC-007 | Pydantic EDL Schema | ⬜ | — | — |
+| SPEC-007 | Pydantic EDL Schema | ✅ | Antigravity | TransitionIntent enum, EDLEntry & EditDecisionList models implemented, validation rules (end > start, clip references), CLI --validate-edl added, 42 unit tests passing |
 | SPEC-008 | Gemini Video Analysis Tool | ⬜ | — | Requires Gemini API key |
 | SPEC-009 | Curation Agent | ⬜ | — | Depends on SPEC-007, SPEC-008 |
 
@@ -118,10 +118,10 @@
 | Metric | Count |
 |--------|-------|
 | **Total Specs** | 30 |
-| **Completed** | 6 |
+| **Completed** | 7 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
-| **Not Started** | 24 |
+| **Not Started** | 23 |
 
 ---
 
@@ -139,10 +139,12 @@
 
 ## Next Steps
 
-- **Phase I (Intent Capture & Media Ingestion) is 100% complete!**
-- Proceed with Phase II: **SPEC-007** (Pydantic EDL Schema).
-- Define `EDLEntry` model (`file_reference`, `start_trim`, `end_trim`, `scene_rationale`, `transition_intent`).
-- Define `EditDecisionList` model.
+- **SPEC-007 (Pydantic EDL Schema) is 100% complete and unit tested.**
+- Next Step: Proceed with Phase II: **SPEC-008** (Gemini Video Analysis Tool).
+  - Build custom ADK tool `analyze_clip(clip_path: str, theme: str)`.
+  - Use Gemini 2.0 Flash multimodal API to analyze the video file.
+  - Pass structured output schema (`EDLEntry`) to enforce deterministic JSON.
+  - Return the scored/analyzed clip data.
 
 
 

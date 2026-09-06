@@ -191,6 +191,13 @@ def parse_arguments() -> argparse.Namespace:
         help="Run Ingestion Agent on a directory to build and display the Clip Manifest (SPEC-006).",
     )
     parser.add_argument(
+        "--validate-edl",
+        type=str,
+        default=None,
+        metavar="EDL_JSON_PATH",
+        help="Validate and inspect an Edit Decision List (EDL) JSON file (SPEC-007).",
+    )
+    parser.add_argument(
         "--web",
         action="store_true",
         help="Launch the ADK Web UI server.",
@@ -306,6 +313,28 @@ def main() -> None:
             print("=" * 60)
         except Exception as exc:
             print(f"Ingestion failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    if args.validate_edl:
+        from schemas.edl import EditDecisionList
+
+        print("=" * 60)
+        print("VideoGuru: Validating Edit Decision List (SPEC-007)")
+        print(f"Target File: {args.validate_edl}")
+        print("=" * 60)
+        try:
+            edl = EditDecisionList.from_file(args.validate_edl)
+            print(f"EDL Valid: {len(edl)} cut(s) loaded successfully.")
+            print(f"Total Duration:    {edl.total_duration:.2f} s")
+            print(f"Unique Clips Used: {len(edl.clip_references)} ({', '.join(sorted(edl.clip_references))})")
+            print("-" * 60)
+            for idx, entry in enumerate(edl, 1):
+                print(f"  [{idx}] Clip: {entry.file_reference} ({entry.start_trim:.2f}s -> {entry.end_trim:.2f}s | {entry.duration:.2f}s) | Transition: {entry.transition_intent.value}")
+                print(f"      Rationale: {entry.scene_rationale}")
+            print("=" * 60)
+        except Exception as exc:
+            print(f"EDL validation failed: {exc}", file=sys.stderr)
             sys.exit(1)
         return
 
