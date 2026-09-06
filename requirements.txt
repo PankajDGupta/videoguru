@@ -1,0 +1,10 @@
+# Core Dependencies for VideoGuru (SPEC-001)
+google-adk>=2.8.0
+google-genai>=2.22.0
+pydantic>=2.0
+opentimelineio>=0.18.0
+openai-whisper>=20231117
+python-dotenv>=1.0.0
+
+# Development & Testing
+pytest>=8.0.0

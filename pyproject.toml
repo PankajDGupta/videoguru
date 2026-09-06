@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "videoguru"
+version = "0.1.0"
+description = "Automated multi-agent video production pipeline built on Google ADK"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "google-adk>=2.8.0",
+    "google-genai>=2.22.0",
+    "pydantic>=2.0",
+    "opentimelineio>=0.18.0",
+    "openai-whisper>=20231117",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
