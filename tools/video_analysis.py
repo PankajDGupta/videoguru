@@ -77,8 +77,8 @@ def build_analysis_prompt(
 def poll_file_active(
     client: Any,
     file_ref: Any,
-    timeout_seconds: float = 60.0,
-    poll_interval: float = 1.0,
+    timeout_seconds: float = 180.0,
+    poll_interval: float = 2.0,
 ) -> Any:
     """Poll Gemini Files API until the uploaded video file enters the ACTIVE state.
 

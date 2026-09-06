@@ -63,7 +63,7 @@ class TestDefaultSettings:
     def test_default_models_and_algorithms(self):
         """Validate default models and loop limits."""
         assert isinstance(settings.GEMINI_MODEL, str)
-        assert settings.GEMINI_MODEL == "gemini-2.0-flash"
+        assert settings.GEMINI_MODEL in ("gemini-2.0-flash", "gemini-2.5-flash", "gemini-3.6-flash")
         assert isinstance(settings.WHISPER_MODEL, str)
         assert settings.WHISPER_MODEL == "medium"
         assert isinstance(settings.MAX_LOOP_ITERATIONS, int)

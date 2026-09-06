@@ -321,24 +321,44 @@ def generate_captions(
 
     resolved_model = model_name or settings.WHISPER_MODEL or "medium"
 
-    # 3. Transcribe audio
-    transcription = transcribe_audio_whisper(
-        media_path=vid_path,
-        model_name=resolved_model,
-        offline=offline,
-    )
+    try:
+        # 3. Transcribe audio
+        transcription = transcribe_audio_whisper(
+            media_path=vid_path,
+            model_name=resolved_model,
+            offline=offline,
+        )
 
-    # 4. Format and write .srt file
-    segments = transcription.get("segments", [])
-    write_srt_file(segments=segments, output_path=resolved_srt_path)
+        # 4. Format and write .srt file
+        segments = transcription.get("segments", [])
+        write_srt_file(segments=segments, output_path=resolved_srt_path)
 
-    # 5. Burn subtitles into video
-    burn_subtitles_to_video(
-        video_path=vid_path,
-        srt_path=resolved_srt_path,
-        output_path=resolved_video_path,
-        font_size=font_size,
-    )
+        # 5. Burn subtitles into video
+        burn_subtitles_to_video(
+            video_path=vid_path,
+            srt_path=resolved_srt_path,
+            output_path=resolved_video_path,
+            font_size=font_size,
+        )
+    except Exception as exc:
+        logger.warning(
+            "generate_captions failed (%s). Degrading gracefully: returning uncaptioned video.",
+            exc,
+        )
+        if tool_context is not None and hasattr(tool_context, "state"):
+            from services.resilience import record_session_warning
+            record_session_warning(
+                state=tool_context.state,
+                warning_message=f"Whisper subtitle generation failed ({exc}); continuing without captions.",
+                category="captioning",
+            )
+            if isinstance(tool_context.state, dict):
+                tool_context.state["captioned_video_path"] = str(vid_path)
+                tool_context.state["srt_path"] = None
+        return {
+            "srt_path": None,
+            "captioned_video_path": str(vid_path),
+        }
 
     # 6. Update session state if ToolContext is provided
     if tool_context is not None and hasattr(tool_context, "state") and isinstance(tool_context.state, dict):

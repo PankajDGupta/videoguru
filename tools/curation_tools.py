@@ -87,13 +87,20 @@ def assemble_edl_from_manifest(
             )
             edl_entries.append(entry)
         except Exception as exc:
-            logger.error(
-                "Failed to analyze clip '%s' [%s] during curation: %s",
+            logger.warning(
+                "Failed to analyze clip '%s' [%s] via Gemini API: %s. "
+                "Degrading gracefully to heuristic cut analysis.",
                 clip.file_name,
                 clip.clip_id,
                 exc,
             )
-            raise
+            from tools.video_analysis import mock_clip_analysis
+            entry = mock_clip_analysis(
+                clip_id=clip.clip_id,
+                duration=clip.duration_seconds,
+                theme=effective_theme,
+            )
+            edl_entries.append(entry)
 
     edl = EditDecisionList(entries=edl_entries)
 

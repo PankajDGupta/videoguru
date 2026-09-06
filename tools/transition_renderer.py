@@ -311,7 +311,35 @@ def render_with_transitions(
 
     # 9. Execute full FFmpeg render command
     logger.info("Executing xfade render command -> %s", target_output)
-    execute_ffmpeg_command(xfade_cmd)
+    try:
+        execute_ffmpeg_command(xfade_cmd)
+    except Exception as exc:
+        logger.warning(
+            "render_with_transitions: xfade filter execution failed (%s). "
+            "Degrading gracefully to direct cut concatenation fallback.",
+            exc,
+        )
+        if tool_context is not None and hasattr(tool_context, "state"):
+            from services.resilience import record_session_warning
+            record_session_warning(
+                state=tool_context.state,
+                warning_message=f"Transition rendering failed ({exc}); degraded to direct cuts.",
+                category="rendering",
+            )
+
+        # Fallback: direct concat demuxer with normalized pre-trimmed clips
+        concat_list_file = stage_path / "fallback_concat_list.txt"
+        with open(concat_list_file, "w", encoding="utf-8") as f:
+            for p in trimmed_paths:
+                f.write(f"file '{Path(p).resolve().as_posix()}'\n")
+
+        fallback_cmd = [
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", str(concat_list_file),
+            "-c", "copy",
+            str(target_output),
+        ]
+        execute_ffmpeg_command(fallback_cmd)
 
     # 10. Update session state
     if tool_context is not None and hasattr(tool_context, "state"):

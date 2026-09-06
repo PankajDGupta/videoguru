@@ -63,7 +63,7 @@ class EDLEntry(BaseModel):
     end_trim: float = Field(
         ...,
         description="The exact second within the source clip where the segment ends (> start_trim).",
-        gt=0.0,
+        ge=0.0,
     )
     scene_rationale: str = Field(
         ...,

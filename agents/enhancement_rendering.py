@@ -151,6 +151,9 @@ class EnhancementRenderingAgent(Agent):
         )
         logger.info("EnhancementRenderingAgent: Step 1 (Transitions) completed -> %s", transition_path)
 
+        from services.observability import log_render_progress
+        log_render_progress("transitions", progress_percent=33.0, output_path=str(transition_path))
+
         # 3. Step 2: Audio Ducking (if background music exists)
         resolved_music: Optional[Path] = None
         if music_path is not None:
@@ -198,6 +201,8 @@ class EnhancementRenderingAgent(Agent):
             logger.info("EnhancementRenderingAgent: No background music track provided. Skipping ducking.")
             tool_ctx.state["ducked_video_path"] = transition_path
 
+        log_render_progress("ducking", progress_percent=66.0, output_path=str(ducked_path), has_ducking=has_ducking)
+
         # 4. Step 3: Whisper Subtitle Generation & Burn-in
         captioned_path = ducked_path
         srt_path: Optional[str] = None
@@ -226,6 +231,8 @@ class EnhancementRenderingAgent(Agent):
             )
             captioned_path = ducked_path
 
+        log_render_progress("captions", progress_percent=90.0, output_path=str(captioned_path), has_captions=has_captions)
+
         # 5. Final Output Placement
         if output_path is not None:
             final_target = Path(output_path).resolve()
@@ -244,6 +251,7 @@ class EnhancementRenderingAgent(Agent):
         state["rendering_complete"] = True
 
         logger.info("EnhancementRenderingAgent: Final broadcast video saved to %s", final_target)
+        log_render_progress("completed", progress_percent=100.0, output_path=str(final_target))
 
         return {
             "final_video_path": str(final_target),

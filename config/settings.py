@@ -39,10 +39,20 @@ def _resolve_default_output_dir() -> Path:
     return output_video_dir
 
 
+def _resolve_dir(env_val: Optional[str], default: Path) -> Path:
+    """Resolve directory path from environment variable, resolving relative paths against BASE_DIR."""
+    if not env_val:
+        return default
+    p = Path(env_val)
+    if not p.is_absolute():
+        return BASE_DIR / p
+    return p
+
+
 # Primary Directory Paths
-MEDIA_INPUT_DIR = Path(os.getenv("MEDIA_INPUT_DIR", str(_resolve_default_input_dir())))
-STAGING_DIR = Path(os.getenv("STAGING_DIR", str(BASE_DIR / "staging")))
-OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(_resolve_default_output_dir())))
+MEDIA_INPUT_DIR = _resolve_dir(os.getenv("MEDIA_INPUT_DIR"), _resolve_default_input_dir())
+STAGING_DIR = _resolve_dir(os.getenv("STAGING_DIR"), BASE_DIR / "staging")
+OUTPUT_DIR = _resolve_dir(os.getenv("OUTPUT_DIR"), _resolve_default_output_dir())
 
 # Models, API Keys & Algorithms
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -64,6 +74,19 @@ except (ValueError, TypeError):
     WEB_PORT = 8000
 
 DEFAULT_USER_ID = os.getenv("DEFAULT_USER_ID", "videoguru_user")
+
+# Logging & Observability Configuration (SPEC-028)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+LOG_JSON = os.getenv("LOG_JSON", "true").strip().lower() in {"true", "1", "yes", "on"}
+LOG_FILE = os.getenv("LOG_FILE", None)
+
+SUPPORTED_LOG_LEVELS: frozenset[str] = frozenset({
+    "DEBUG",
+    "INFO",
+    "WARNING",
+    "ERROR",
+    "CRITICAL",
+})
 
 # Recognized / Supported Whisper Models
 SUPPORTED_WHISPER_MODELS: frozenset[str] = frozenset({
@@ -151,6 +174,12 @@ def validate_settings(
             f"WHISPER_MODEL must be one of {sorted(SUPPORTED_WHISPER_MODELS)}, got {WHISPER_MODEL!r}"
         )
 
+    # Check log level
+    if not isinstance(LOG_LEVEL, str) or LOG_LEVEL.strip().upper() not in SUPPORTED_LOG_LEVELS:
+        errors.append(
+            f"LOG_LEVEL must be one of {sorted(SUPPORTED_LOG_LEVELS)}, got {LOG_LEVEL!r}"
+        )
+
     # Check GEMINI_API_KEY if required
     if require_api_key:
         if not GEMINI_API_KEY or not str(GEMINI_API_KEY).strip():
@@ -175,13 +204,14 @@ def reload_settings(env_file: Optional[Union[str, Path]] = None) -> None:
     global MEDIA_INPUT_DIR, STAGING_DIR, OUTPUT_DIR
     global GEMINI_API_KEY, GEMINI_MODEL, WHISPER_MODEL, MAX_LOOP_ITERATIONS
     global APP_NAME, WEB_HOST, WEB_PORT, DEFAULT_USER_ID
+    global LOG_LEVEL, LOG_JSON, LOG_FILE
 
     if env_file:
         load_dotenv(env_file, override=True)
 
-    MEDIA_INPUT_DIR = Path(os.getenv("MEDIA_INPUT_DIR", str(_resolve_default_input_dir())))
-    STAGING_DIR = Path(os.getenv("STAGING_DIR", str(BASE_DIR / "staging")))
-    OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(_resolve_default_output_dir())))
+    MEDIA_INPUT_DIR = _resolve_dir(os.getenv("MEDIA_INPUT_DIR"), _resolve_default_input_dir())
+    STAGING_DIR = _resolve_dir(os.getenv("STAGING_DIR"), BASE_DIR / "staging")
+    OUTPUT_DIR = _resolve_dir(os.getenv("OUTPUT_DIR"), _resolve_default_output_dir())
 
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
@@ -201,5 +231,9 @@ def reload_settings(env_file: Optional[Union[str, Path]] = None) -> None:
         WEB_PORT = -1
 
     DEFAULT_USER_ID = os.getenv("DEFAULT_USER_ID", "videoguru_user")
+
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+    LOG_JSON = os.getenv("LOG_JSON", "true").strip().lower() in {"true", "1", "yes", "on"}
+    LOG_FILE = os.getenv("LOG_FILE", None)
 
 

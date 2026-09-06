@@ -539,6 +539,23 @@ def review_edl_as_critic(
                 tool_context=tool_context,
             )
 
+    try:
+        from services.observability import log_edl_iteration
+        iteration = 1
+        if tool_context and hasattr(tool_context, "state") and hasattr(tool_context.state, "get"):
+            revs = tool_context.state.get("revision_feedback") or []
+            iteration = len(revs) + 1
+        log_edl_iteration(
+            iteration=iteration,
+            cut_count=len(resolved_edl),
+            total_duration=resolved_edl.total_duration,
+            score=result.score,
+            passed=result.passed,
+            feedback=result.feedback,
+        )
+    except Exception as obs_exc:
+        logger.debug("Failed to emit log_edl_iteration: %s", obs_exc)
+
     return result
 
 

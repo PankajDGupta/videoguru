@@ -62,6 +62,9 @@ def print_project_info() -> None:
     print(f"Max Loop Iterations: {settings.MAX_LOOP_ITERATIONS}")
     print(f"Web Host & Port:     {settings.WEB_HOST}:{settings.WEB_PORT}")
     print(f"Gemini API Key Set:  {'Yes' if bool(os.getenv('GEMINI_API_KEY')) else 'No (set GEMINI_API_KEY to enable live LLM)'}")
+    print(f"Log Level & Format:  {settings.LOG_LEVEL} (JSON: {'Enabled' if settings.LOG_JSON else 'Disabled'})")
+    if settings.LOG_FILE:
+        print(f"Log File:            {settings.LOG_FILE}")
     print("-" * 60)
     print(f"Root Agent Name:     {root_agent.name}")
     print(f"Root Agent Desc:     {root_agent.description}")
@@ -355,6 +358,26 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="Force offline bootstrap execution without contacting Gemini API.",
     )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default=None,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help=f"Set logging severity level (default: {settings.LOG_LEVEL}).",
+    )
+    parser.add_argument(
+        "--log-json",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Output structured logs in JSON format (SPEC-028).",
+    )
+    parser.add_argument(
+        "--log-file",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Optional file path to persist structured logs.",
+    )
     return parser.parse_args()
 
 
@@ -368,6 +391,14 @@ def main() -> None:
             pass
 
     args = parse_arguments()
+
+    # Configure structured logging (SPEC-028)
+    from services.observability import configure_logging
+    configure_logging(
+        log_level=args.log_level,
+        json_format=args.log_json,
+        log_file=args.log_file,
+    )
 
     if args.info:
         print_project_info()

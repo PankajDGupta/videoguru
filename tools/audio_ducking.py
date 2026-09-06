@@ -158,7 +158,24 @@ def apply_audio_ducking(
 
     logger.info("Applying audio ducking: video=%s, music=%s -> output=%s",
                 resolved_video_path, resolved_music_path, resolved_output_path)
-    execute_ffmpeg_command(cmd)
+    try:
+        execute_ffmpeg_command(cmd)
+    except Exception as exc:
+        if tool_context is None:
+            raise
+        logger.warning(
+            "apply_audio_ducking failed (%s). Degrading gracefully: returning unducked video.",
+            exc,
+        )
+        if state is not None:
+            from services.resilience import record_session_warning
+            record_session_warning(
+                state=state,
+                warning_message=f"Audio ducking failed ({exc}); continuing with unducked audio.",
+                category="ducking",
+            )
+            state["ducked_video_path"] = str(resolved_video_path)
+        return str(resolved_video_path)
 
     # 7. Persist to session state if available
     if state is not None:

@@ -186,12 +186,25 @@ class RootWorkflowAgent(SequentialAgent):
             self.offline,
         )
 
+        last_author: Optional[str] = None
         try:
+            from services.observability import log_agent_transition
+
             async for event in runner.run_async(
                 user_id=user_id,
                 session_id=sid,
                 new_message=user_content,
             ):
+                current_author = event.author
+                if current_author and current_author != last_author:
+                    log_agent_transition(
+                        from_agent=last_author or "user",
+                        to_agent=current_author,
+                        session_id=sid,
+                        theme=initial_state.get("theme") if initial_state else None,
+                    )
+                    last_author = current_author
+
                 event_data: dict[str, Any] = {
                     "author": event.author,
                     "text": None,

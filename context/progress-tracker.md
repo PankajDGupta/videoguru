@@ -107,9 +107,9 @@
 
 | Spec | Title | Status | Assignee | Notes |
 |------|-------|--------|----------|-------|
-| SPEC-028 | Logging & Observability | ⬜ | — | — |
-| SPEC-029 | Error Handling & Graceful Degradation | ⬜ | — | — |
-| SPEC-030 | Documentation & README | ⬜ | — | — |
+| SPEC-028 | Logging & Observability | ✅ | Antigravity | Structured JSON logging module services/observability.py implemented with JsonFormatter, configure_logging (console & file), standardized event loggers (log_agent_transition, log_tool_invocation, log_edl_iteration, log_render_progress); settings & CLI integration (--log-level, --log-json, --log-file); 13 unit tests passing (550 total tests passing) |
+| SPEC-029 | Error Handling & Graceful Degradation | ✅ | Antigravity | Exception hierarchy in services/exceptions.py (VideoGuruError, IngestionError, GeminiApiError, RenderError, AudioDuckingError, WhisperError), resilience utilities in services/resilience.py, graceful fallbacks for xfade failure (direct cut concat), ducking failure (unducked video), Whisper failure (uncaptioned video), and Gemini API quota/timeout (heuristic curation); session state warnings persistence; 13 unit tests passing (563 total tests passing) |
+| SPEC-030 | Documentation & README | ✅ | Antigravity | Comprehensive README.md created with project overview, Mermaid architecture diagram, agent roster, security callbacks, prerequisites, CLI usage reference, and structure; module docstrings verified across 32 critical codebase modules; 42 unit tests passing (605 total tests passing) |
 
 ---
 
@@ -118,10 +118,10 @@
 | Metric | Count |
 |--------|-------|
 | **Total Specs** | 30 |
-| **Completed** | 27 |
+| **Completed** | 30 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
-| **Not Started** | 3 |
+| **Not Started** | 0 |
 
 ---
 
@@ -139,14 +139,12 @@
 
 ## Next Steps
 
-- **Phase VII (Root Pipeline Assembly & Integration) is 100% complete.**
-  - SPEC-025: Root Workflow Agent (`SequentialAgent` wiring all 5 agents and callbacks) — ✅ Completed (14 tests).
-  - SPEC-026: End-to-End Integration Test — ✅ Completed (9 tests).
-  - SPEC-027: Configuration & Environment Setup — ✅ Completed (28 tests).
-- **Phase VIII (Polish & Deployment) is up next:**
-  - SPEC-028: Logging & Observability.
-  - SPEC-029: Error Handling & Graceful Degradation.
-  - SPEC-030: Documentation & README.
+- **Phase VIII (Polish & Deployment) is 100% complete:**
+  - SPEC-028: Logging & Observability — ✅ Completed (13 tests).
+  - SPEC-029: Error Handling & Graceful Degradation — ✅ Completed (13 tests).
+  - SPEC-030: Documentation & README — ✅ Completed (42 tests).
+- **All 30 Specs (Phase 0 through Phase VIII) are 100% complete and verified.**
+- **Next Action:** Architectural documentation generated in `context/project-architecture.md` for onboarding new agents and contributors.
 
 
 

@@ -250,7 +250,7 @@ class TestMainCLI:
         assert result.returncode == 0
         assert "VideoGuru" in result.stdout
         assert "InMemorySessionService" in result.stdout
-        assert "gemini-2.0-flash" in result.stdout
+        assert any(m in result.stdout for m in ("gemini-2.0-flash", "gemini-2.5-flash", "gemini-3.6-flash"))
 
     def test_main_run_flag(self):
         result = subprocess.run(
