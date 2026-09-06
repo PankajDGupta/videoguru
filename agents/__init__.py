@@ -36,6 +36,12 @@ from agents.loop_agent import (
     create_loop_agent,
     loop_agent,
 )
+from agents.enhancement_rendering import (
+    ENHANCEMENT_RENDERING_INSTRUCTION,
+    EnhancementRenderingAgent,
+    create_enhancement_rendering_agent,
+    enhancement_rendering_agent,
+)
 from agents.root_greeter import (
     ROOT_GREETER_INSTRUCTION,
     RootGreeterAgent,
@@ -49,6 +55,8 @@ __all__ = [
     "CURATION_INSTRUCTION",
     "CriticAgent",
     "CurationAgent",
+    "ENHANCEMENT_RENDERING_INSTRUCTION",
+    "EnhancementRenderingAgent",
     "INGESTION_INSTRUCTION",
     "IngestionAgent",
     "REVIEWER_INSTRUCTION",
@@ -61,6 +69,7 @@ __all__ = [
     "app",
     "create_critic_agent",
     "create_curation_agent",
+    "create_enhancement_rendering_agent",
     "create_ingestion_agent",
     "create_loop_agent",
     "create_review_orchestrator_agent",
@@ -68,6 +77,7 @@ __all__ = [
     "create_root_greeter_agent",
     "critic_agent",
     "curation_agent",
+    "enhancement_rendering_agent",
     "get_app",
     "get_root_agent",
     "ingestion_agent",

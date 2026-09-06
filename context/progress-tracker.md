@@ -66,7 +66,7 @@
 |------|-------|--------|----------|-------|
 | SPEC-013 | OpenTimelineIO Converter Tool | ✅ | Antigravity | edl_to_otio tool implemented with _create_otio_timeline helper, creates Timeline with V1/A1 tracks, maps EDL entries to OTIO Clips with ExternalReference and TimeRange, saves .otio to staging dir, load_otio_timeline helper added, CLI --to-otio added, 5 unit tests passing |
 | SPEC-014 | Review Orchestrator Agent | ✅ | Antigravity | ReviewOrchestratorAgent implemented with edl_to_otio, prepare_review_summary, and process_user_review_response tools, converts EDL → .otio, presents draft summary, handles approve/revise flow with session state routing, CLI --review-draft added, 6 unit tests passing |
-| SPEC-015 | Gemini Live API Integration | ⬜ | — | Stretch goal |
+| SPEC-015 | Gemini Live API Integration | ✅ | Antigravity | LiveReviewSession implemented with LiveRequestQueue & Runner.run_live(), supporting audio chunk and text input, voice transcription routing to review approval/revision state, CLI --live-review & --voice-file added, 7 unit tests passing (254 total tests passing) |
 
 ---
 
@@ -74,11 +74,11 @@
 
 | Spec | Title | Status | Assignee | Notes |
 |------|-------|--------|----------|-------|
-| SPEC-016 | FFmpeg Command Builder | ⬜ | — | — |
-| SPEC-017 | Transition Rendering Tool | ⬜ | — | Depends on SPEC-016 |
-| SPEC-018 | Audio Ducking Tool | ⬜ | — | Depends on SPEC-016 |
-| SPEC-019 | Whisper Captioning Tool | ⬜ | — | Requires Whisper installed |
-| SPEC-020 | Enhancement & Rendering Agent | ⬜ | — | Depends on SPEC-016–019 |
+| SPEC-016 | FFmpeg Command Builder | ✅ | Antigravity | ffmpeg_builder module implemented with build_trim_command, build_xfade_chain, build_audio_crossfade, build_ducking_command, build_caption_burn_command with Windows path escaping, and sandboxed execute_ffmpeg_command, 55 unit tests passing |
+| SPEC-017 | Transition Rendering Tool | ✅ | Antigravity | render_with_transitions tool implemented with pre-trimming, normalization (1920x1080 @ 30fps), xfade & acrossfade filter graph assembly, state resolution, single-cut fallback, and session state updates, 23 unit tests passing |
+| SPEC-018 | Audio Ducking Tool | ✅ | Antigravity | Custom ADK tool apply_audio_ducking implemented with sidechaincompress filter, state resolution, auto-discovery, and parameter validation; exported in tools; 17 unit tests passing |
+| SPEC-019 | Whisper Captioning Tool | ✅ | Antigravity | whisper_captioning module implemented with format_timestamp_srt, write_srt_file, transcribe_audio_whisper (with offline mock fallback), burn_subtitles_to_video, and generate_captions ADK tool with session state updates, 25 unit tests passing (351 total tests passing) |
+| SPEC-020 | Enhancement & Rendering Agent | ✅ | Antigravity | EnhancementRenderingAgent implemented orchestrating xfade transitions, audio ducking, Whisper captions, output directory placement, and session.state['final_video_path'] update; CLI --render-edl, --duck-audio, --generate-captions added; 10 unit tests passing (384 total tests passing) |
 
 ---
 
@@ -118,10 +118,10 @@
 | Metric | Count |
 |--------|-------|
 | **Total Specs** | 30 |
-| **Completed** | 14 |
+| **Completed** | 20 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
-| **Not Started** | 16 |
+| **Not Started** | 10 |
 
 ---
 
@@ -139,14 +139,16 @@
 
 ## Next Steps
 
-- **Phase III (Autonomous AI Review Loop) is 100% complete.** SPEC-010, SPEC-011, and SPEC-012 all implemented and tested.
-- **Phase IV (Human-in-the-Loop Review) MVP is 100% complete.** SPEC-013 and SPEC-014 implemented and tested.
-  - SPEC-015 (Gemini Live API Integration) is a stretch goal — deferred.
-- **Next: Proceed to Phase V (Rendering & Post-Production).**
-  - SPEC-016 (FFmpeg Command Builder) — no dependencies, ready to start.
-  - SPEC-017 (Transition Rendering Tool) — depends on SPEC-016.
-  - SPEC-018 (Audio Ducking Tool) — depends on SPEC-016.
-  - SPEC-019 (Whisper Captioning Tool) — independent.
-  - SPEC-020 (Enhancement & Rendering Agent) — depends on SPEC-016–019.
+- **Phase V (Rendering & Post-Production) is 100% complete.**
+  - SPEC-016 (FFmpeg Command Builder) — ✅ Completed (55 tests).
+  - SPEC-017 (Transition Rendering Tool) — ✅ Completed (23 tests).
+  - SPEC-018 (Audio Ducking Tool) — ✅ Completed (17 tests).
+  - SPEC-019 (Whisper Captioning Tool) — ✅ Completed (25 tests).
+  - SPEC-020 (Enhancement & Rendering Agent) — ✅ Completed (10 tests).
+- **Next: Proceed to Phase VI (Security & Callbacks).**
+  - SPEC-021: `before_model_callback` — Input Guardrail.
+  - SPEC-022: `before_tool_callback` — FFmpeg Sandboxing.
+  - SPEC-023: `after_tool_callback` — Error Recovery.
+  - SPEC-024: `after_model_callback` — Schema Validation.
 
 

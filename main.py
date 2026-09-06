@@ -260,6 +260,57 @@ def parse_arguments() -> argparse.Namespace:
         metavar="EDL_JSON_PATH",
         help="Run Review Orchestrator Agent to convert EDL to OTIO and present review summary (SPEC-014).",
     )
+    parser.add_argument(
+        "--live-review",
+        type=str,
+        default=None,
+        metavar="EDL_JSON_PATH",
+        help="Run Gemini Live API bidirectional review session with voice/audio feedback (SPEC-015).",
+    )
+    parser.add_argument(
+        "--voice-file",
+        type=str,
+        default=None,
+        metavar="AUDIO_PATH",
+        help="Optional audio/voice file path (.wav/.mp3) to feed into --live-review.",
+    )
+
+    # Phase V — Rendering & Post-Production Arguments
+    parser.add_argument(
+        "--render-edl",
+        type=str,
+        default=None,
+        metavar="EDL_JSON_PATH",
+        help="Run full Phase V rendering pipeline (transitions, ducking, captions) on an EDL via EnhancementRenderingAgent (SPEC-020).",
+    )
+    parser.add_argument(
+        "--duck-audio",
+        type=str,
+        default=None,
+        metavar="VIDEO_PATH",
+        help="Apply sidechain compression audio ducking with background music (SPEC-018).",
+    )
+    parser.add_argument(
+        "--generate-captions",
+        type=str,
+        default=None,
+        metavar="VIDEO_PATH",
+        help="Transcribe dialogue with Whisper and burn subtitles into video frames (SPEC-019).",
+    )
+    parser.add_argument(
+        "--music-file",
+        type=str,
+        default=None,
+        metavar="MUSIC_PATH",
+        help="Path to background music file for audio ducking or rendering.",
+    )
+    parser.add_argument(
+        "--output-file",
+        type=str,
+        default=None,
+        metavar="OUT_PATH",
+        help="Explicit destination path for rendered output video.",
+    )
 
     parser.add_argument(
         "--web",
@@ -719,6 +770,102 @@ def main() -> None:
             sys.exit(1)
         return
 
+    if args.live_review:
+        from pathlib import Path
+        from schemas.edl import EditDecisionList
+        from tools.ingestion_tools import build_clip_manifest
+        from agents.review_orchestrator import create_review_orchestrator_agent
+        from services.live_review import (
+            LiveReviewSession,
+            create_live_review_session,
+            create_mock_wav_bytes,
+        )
+
+        edl_path = Path(args.live_review)
+        media_dir = args.ingest_dir or settings.MEDIA_INPUT_DIR
+        theme = args.theme or "General highlights and engaging moments"
+
+        print("=" * 60)
+        print("VideoGuru: Gemini Live API Review Integration (SPEC-015)")
+        print(f"Target EDL:     {edl_path}")
+        print(f"Media Source:   {media_dir}")
+        print(f"Theme:          {theme}")
+        print(f"Execution Mode: {'Offline Mock Stream' if args.offline else 'Gemini Live Bidirectional Streaming'}")
+        print("=" * 60)
+
+        if not edl_path.exists():
+            print(f"Error: Target EDL file not found at '{edl_path}'.", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            edl = EditDecisionList.from_file(edl_path)
+            manifest = build_clip_manifest(media_dir)
+
+            if not manifest:
+                print(f"No video clips discovered in directory '{media_dir}'.", file=sys.stderr)
+                sys.exit(1)
+
+            session_id = f"live_review_{uuid.uuid4().hex[:8]}"
+            session_mgr = get_session_manager()
+            state = {
+                "theme": theme,
+                "edl": edl,
+                "clip_manifest": [c.model_dump() for c in manifest],
+                "review_status": "pending",
+            }
+            session = asyncio.run(
+                session_mgr.create_session(
+                    user_id=settings.DEFAULT_USER_ID,
+                    session_id=session_id,
+                    state=state,
+                )
+            )
+
+            agent = create_review_orchestrator_agent(offline=args.offline)
+            runner = Runner(
+                app_name=settings.APP_NAME,
+                agent=agent,
+                session_service=get_session_service(),
+            )
+
+            live_session = create_live_review_session(
+                runner=runner,
+                session_id=session_id,
+                user_id=settings.DEFAULT_USER_ID,
+                offline=args.offline,
+            )
+
+            print("Starting bidirectional live review session...")
+
+            # Ingest voice input from file if provided, otherwise sample mock wave
+            if args.voice_file and os.path.exists(args.voice_file):
+                voice_data = Path(args.voice_file).read_bytes()
+                print(f"Loaded voice feedback from '{args.voice_file}' ({len(voice_data)} bytes).")
+            else:
+                voice_data = create_mock_wav_bytes(duration_seconds=1.5)
+                print(f"Generated mock voice input stream ({len(voice_data)} bytes).")
+
+            # Route voice feedback
+            result = asyncio.run(
+                live_session.process_voice_review(
+                    audio_data=voice_data,
+                    session_state=state,
+                    transcription_override="Approve this draft, pacing and cuts look great!" if args.offline else None,
+                )
+            )
+
+            print("-" * 60)
+            print(f"Voice Transcription: {result['transcription']}")
+            print(f"Review Outcome:      {result['result_message']}")
+            print(f"Review Approved:     {result['review_approved']}")
+            print(f"Review Status:       {result['review_status']}")
+            print("=" * 60)
+            live_session.close()
+        except Exception as exc:
+            print(f"Live review session failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+
     if args.ingest_dir:
 
         from tools.ingestion_tools import build_clip_manifest
@@ -802,6 +949,116 @@ def main() -> None:
             print("=" * 60)
         except Exception as exc:
             print(f"Clip analysis failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    if args.duck_audio:
+        from tools.audio_ducking import apply_audio_ducking
+
+        print("=" * 60)
+        print("VideoGuru: Apply Audio Ducking (SPEC-018)")
+        print(f"Video Source: {args.duck_audio}")
+        print(f"Music File:   {args.music_file or 'Auto-discover in MEDIA_INPUT_DIR'}")
+        print("=" * 60)
+        try:
+            ducked = apply_audio_ducking(
+                video_path=args.duck_audio,
+                music_path=args.music_file,
+                output_path=args.output_file,
+            )
+            print(f"Successfully applied audio ducking.")
+            print(f"Output Video: {ducked}")
+            print("=" * 60)
+        except Exception as exc:
+            print(f"Audio ducking failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    if args.generate_captions:
+        from tools.whisper_captioning import generate_captions
+
+        print("=" * 60)
+        print("VideoGuru: Whisper Subtitle Generation & Burn-in (SPEC-019)")
+        print(f"Video Source:   {args.generate_captions}")
+        print(f"Execution Mode: {'Offline Mock' if args.offline else 'Whisper AI'}")
+        print("=" * 60)
+        try:
+            cap_res = generate_captions(
+                video_path=args.generate_captions,
+                output_video_path=args.output_file,
+                offline=args.offline,
+            )
+            print(f"Successfully generated and burned in subtitles.")
+            print(f"SRT Subtitles:  {cap_res.get('srt_path')}")
+            print(f"Captioned Video: {cap_res.get('captioned_video_path')}")
+            print("=" * 60)
+        except Exception as exc:
+            print(f"Caption generation failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    if args.render_edl:
+        from pathlib import Path
+        from schemas.edl import EditDecisionList
+        from tools.ingestion_tools import build_clip_manifest
+        from agents.enhancement_rendering import create_enhancement_rendering_agent
+
+        edl_path = Path(args.render_edl)
+        media_dir = args.ingest_dir or settings.MEDIA_INPUT_DIR
+
+        print("=" * 60)
+        print("VideoGuru: Phase V Enhancement & Rendering Pipeline (SPEC-020)")
+        print(f"Target EDL:     {edl_path}")
+        print(f"Media Source:   {media_dir}")
+        print(f"Music File:     {args.music_file or 'Auto-discover in MEDIA_INPUT_DIR'}")
+        print(f"Execution Mode: {'Offline Deterministic' if args.offline else 'Live Agent'}")
+        print("=" * 60)
+
+        if not edl_path.exists():
+            print(f"Error: Target EDL file not found at '{edl_path}'.", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            edl = EditDecisionList.from_file(edl_path)
+            manifest = build_clip_manifest(media_dir)
+            if not manifest:
+                print(f"No video clips discovered in directory '{media_dir}'.", file=sys.stderr)
+                sys.exit(1)
+
+            session_id = f"render_{uuid.uuid4().hex[:8]}"
+            session_mgr = get_session_manager()
+            state = {
+                "edl": edl,
+                "clip_manifest": [c.model_dump() for c in manifest],
+            }
+            if args.music_file:
+                state["music_path"] = args.music_file
+
+            session = asyncio.run(
+                session_mgr.create_session(
+                    user_id=settings.DEFAULT_USER_ID,
+                    session_id=session_id,
+                    state=state,
+                )
+            )
+
+            agent = create_enhancement_rendering_agent(offline=args.offline)
+            render_res = agent.execute_rendering_pipeline(
+                state=state,
+                music_path=args.music_file,
+                output_path=args.output_file,
+            )
+
+            print("🎬 Final Render Completed Successfully!")
+            print(f"- Final Video:    {render_res['final_video_path']}")
+            print(f"- Transitions:    {render_res['transition_video_path']}")
+            print(f"- Audio Ducking:  {'Applied' if render_res['has_ducking'] else 'None (skipped)'}")
+            print(f"- Captions:       {'Burned-in' if render_res['has_captions'] else 'None (skipped)'}")
+            if render_res.get("srt_path"):
+                print(f"- Subtitles SRT:  {render_res['srt_path']}")
+            print("=" * 60)
+        except Exception as exc:
+            print(f"Rendering pipeline failed: {exc}", file=sys.stderr)
             sys.exit(1)
         return
 
