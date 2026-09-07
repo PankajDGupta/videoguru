@@ -35,13 +35,13 @@ CURATION_INSTRUCTION = (
     "You are the Curation and Narrative Agent for VideoGuru, an automated AI video production system. "
     "Your primary responsibility is Multimodal Video Analysis and Initial Scene Selection (Phase II):\n"
     "1. Retrieve the Clip Manifest from session state ('clip_manifest') and the creator's theme ('theme').\n"
-    "2. For each raw video clip in the manifest, invoke the `analyze_clip` tool to analyze the video frames and audio "
-    "against the creator's stated theme, or call `curate_edit_decision_list` to assemble the entire cut list.\n"
-    "3. Select the most visually engaging, continuous moments that highlight the theme, eliminating dead air and low-energy footage.\n"
-    "4. Assemble the initial Edit Decision List (EDL) conforming strictly to the EDLEntry schema, setting start_trim, "
-    "end_trim, scene_rationale, transition_intent, and engagement_score.\n"
-    "5. Save the assembled EDL in session state under 'edl' and summarize the curated timeline (clip count, total duration, "
-    "average engagement score) for downstream algorithmic review (Phase III)."
+    "2. You MUST call the `curate_edit_decision_list` tool to analyze all clips and assemble the Edit Decision List. "
+    "This tool handles multimodal analysis of each clip, theme matching, and EDL assembly automatically. "
+    "Do NOT try to manually describe or summarize the EDL — you MUST use the tool to persist it.\n"
+    "3. The tool will store the EDL in session state under 'edl' for downstream algorithmic review (Phase III).\n"
+    "4. After the tool completes, report the summary: clip count, total duration, and average engagement score.\n"
+    "CRITICAL: The downstream Reviewer and Critic agents depend on the EDL being stored in session state. "
+    "If you do not call `curate_edit_decision_list`, the pipeline will fail."
 )
 
 
@@ -147,6 +147,44 @@ class CurationAgent(Agent):
             # Live LLM execution via Google ADK
             async for event in super()._run_async_impl(ctx):
                 yield event
+
+            # Safety check: verify the LLM actually stored the EDL in session state.
+            # If the LLM responded with text instead of calling curate_edit_decision_list,
+            # the EDL will be missing — fall back to deterministic curation.
+            if not ctx.session.state.get("edl"):
+                logger.warning(
+                    "CurationAgent: LLM completed but EDL missing from session state. "
+                    "Falling back to deterministic offline curation."
+                )
+                theme = get_theme_from_state(ctx.session.state) or "General highlights and engaging moments"
+                manifest = get_clip_manifest_from_state(ctx.session.state)
+                feedback = ctx.session.state.get("critic_feedback") or ctx.session.state.get("revision_feedback")
+
+                if manifest:
+                    edl = assemble_edl_from_manifest(
+                        manifest=manifest,
+                        theme=theme,
+                        offline=True,
+                        feedback=str(feedback) if feedback else None,
+                    )
+                    serialized_edl = edl.to_dict_list()
+                    yield Event(
+                        author=self.name,
+                        content=types.Content(
+                            parts=[types.Part.from_text(
+                                text=(
+                                    f"[CurationAgent] Fallback: Assembled EDL with {len(edl)} cut(s) "
+                                    f"({edl.total_duration:.1f}s) via deterministic curation."
+                                )
+                            )]
+                        ),
+                        actions=EventActions(
+                            state_delta={
+                                "edl": serialized_edl,
+                                "edl_total_duration": edl.total_duration,
+                            }
+                        ),
+                    )
 
 
 def create_curation_agent(

@@ -50,10 +50,12 @@ def _create_otio_timeline(
         if not clip:
             raise ValueError(f"Clip reference '{entry.file_reference}' not found in manifest.")
 
-        # Create time range
+        # Create time range using source duration for the underlying media reference
         frame_rate = clip.frame_rate
+        speed = getattr(entry, "playback_speed", 1.0)
+        source_dur = getattr(entry, "source_duration", entry.duration)
         start_time = otio.opentime.from_seconds(entry.start_trim, frame_rate)
-        duration = otio.opentime.from_seconds(entry.duration, frame_rate)
+        duration = otio.opentime.from_seconds(source_dur, frame_rate)
         time_range = otio.opentime.TimeRange(start_time, duration)
 
         # Create media reference
@@ -67,6 +69,11 @@ def _create_otio_timeline(
             media_reference=media_reference,
             source_range=time_range,
         )
+
+        # Attach LinearTimeWarp effect if speed is modified
+        if abs(speed - 1.0) > 1e-4:
+            video_clip.effects.append(otio.schema.LinearTimeWarp(time_scalar=speed))
+
         video_track.append(video_clip)
 
         # Create audio clip if clip has audio
@@ -76,6 +83,8 @@ def _create_otio_timeline(
                 media_reference=media_reference,
                 source_range=time_range,
             )
+            if abs(speed - 1.0) > 1e-4:
+                audio_clip.effects.append(otio.schema.LinearTimeWarp(time_scalar=speed))
             audio_track.append(audio_clip)
         else:
             # If no audio, we must add a gap to the audio track to keep sync

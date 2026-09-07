@@ -11,6 +11,7 @@ import pytest
 from rendering.ffmpeg_builder import (
     TRANSITION_MAP,
     VALID_XFADE_TRANSITIONS,
+    build_atempo_filter,
     build_audio_crossfade,
     build_caption_burn_command,
     build_ducking_command,
@@ -524,3 +525,72 @@ class TestEdgeCasesAndPathTypes:
         # A clip of 1.0s cannot have a 1.0s transition because offset would be 0 or stream exhausts
         with pytest.raises(ValueError, match="must be strictly greater than transition duration"):
             calculate_xfade_offsets([1.0, 5.0], transition_duration=1.0)
+
+
+class TestSpeedRampingAndAtempo:
+    """Validate fast-forward audio tempo filter and video PTS scaling."""
+
+    def test_build_atempo_filter_identities(self):
+        assert build_atempo_filter(1.0) == ""
+        assert build_atempo_filter(1.00001) == ""
+
+    def test_build_atempo_filter_valid_ranges(self):
+        # In range [0.5, 2.0]
+        assert build_atempo_filter(1.5) == "atempo=1.5000"
+        assert build_atempo_filter(2.0) == "atempo=2.0000"
+        assert build_atempo_filter(0.5) == "atempo=0.5000"
+
+    def test_build_atempo_filter_chained_fast_forward(self):
+        # 4.0x requires 2.0 * 2.0
+        assert build_atempo_filter(4.0) == "atempo=2.0000,atempo=2.0000"
+        # 8.0x requires 2.0 * 2.0 * 2.0
+        assert build_atempo_filter(8.0) == "atempo=2.0000,atempo=2.0000,atempo=2.0000"
+
+    def test_build_atempo_filter_chained_slow_motion(self):
+        # 0.25x requires 0.5 * 0.5
+        assert build_atempo_filter(0.25) == "atempo=0.5000,atempo=0.5000"
+
+    def test_build_atempo_filter_invalid_non_positive(self):
+        with pytest.raises(ValueError, match="Speed multiplier must be positive"):
+            build_atempo_filter(0.0)
+        with pytest.raises(ValueError, match="Speed multiplier must be positive"):
+            build_atempo_filter(-1.5)
+
+    def test_build_trim_command_with_2x_fast_forward(self):
+        cmd = build_trim_command(
+            clip_path="input.mp4",
+            start=0.0,
+            end=10.0,
+            output_path="output_2x.mp4",
+            playback_speed=2.0,
+            has_audio=True,
+        )
+        vf_idx = cmd.index("-vf")
+        assert "setpts=0.500000*PTS" in cmd[vf_idx + 1]
+        assert "fps=30.0" in cmd[vf_idx + 1]
+        assert "-af" in cmd
+        af_idx = cmd.index("-af")
+        assert "atempo=2.0000" in cmd[af_idx + 1]
+        assert "-c:a" in cmd
+        assert "aac" in cmd
+
+    def test_build_trim_command_with_4x_fast_forward_no_audio(self):
+        cmd = build_trim_command(
+            clip_path="input.mp4",
+            start=0.0,
+            end=10.0,
+            output_path="output_4x.mp4",
+            playback_speed=4.0,
+            has_audio=False,
+        )
+        vf_idx = cmd.index("-vf")
+        assert "setpts=0.250000*PTS" in cmd[vf_idx + 1]
+        assert "-an" in cmd
+        assert "-af" not in cmd
+        assert "-c:a" not in cmd
+
+    def test_build_trim_command_invalid_playback_speed(self):
+        with pytest.raises(ValueError, match="playback_speed must be positive"):
+            build_trim_command("input.mp4", 0.0, 5.0, "out.mp4", playback_speed=0.0)
+        with pytest.raises(ValueError, match="playback_speed must be positive"):
+            build_trim_command("input.mp4", 0.0, 5.0, "out.mp4", playback_speed=-2.0)

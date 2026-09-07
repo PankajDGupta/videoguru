@@ -168,3 +168,41 @@ def test_edl_to_otio_empty_state_errors():
             
     with pytest.raises(ValueError, match="No Edit Decision List provided"):
         edl_to_otio(tool_context=MockToolContext())
+
+
+def test_create_otio_timeline_with_fast_forward(mock_clip_manifest):
+    fast_edl = EditDecisionList(
+        entries=[
+            EDLEntry(
+                file_reference="vid_1",
+                start_trim=0.0,
+                end_trim=6.0,
+                scene_rationale="Fast forward run",
+                playback_speed=2.0,
+            ),
+            EDLEntry(
+                file_reference="vid_2",
+                start_trim=1.0,
+                end_trim=5.0,
+                scene_rationale="Normal cut",
+                playback_speed=1.0,
+            ),
+        ]
+    )
+    timeline = _create_otio_timeline(fast_edl, mock_clip_manifest)
+    video_track = timeline.tracks[0]
+    audio_track = timeline.tracks[1]
+
+    # Clip 1 (fast forward 2x)
+    vc1 = video_track[0]
+    ac1 = audio_track[0]
+    assert len(vc1.effects) == 1
+    assert isinstance(vc1.effects[0], otio.schema.LinearTimeWarp)
+    assert vc1.effects[0].time_scalar == 2.0
+    assert len(ac1.effects) == 1
+    assert isinstance(ac1.effects[0], otio.schema.LinearTimeWarp)
+    assert ac1.effects[0].time_scalar == 2.0
+
+    # Clip 2 (normal speed 1x)
+    vc2 = video_track[1]
+    assert len(vc2.effects) == 0

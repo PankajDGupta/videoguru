@@ -490,9 +490,10 @@ def main() -> None:
             print("-" * 60)
             for idx, entry in enumerate(edl, 1):
                 score_str = f", score={entry.engagement_score:.1f}" if entry.engagement_score is not None else ""
+                speed_str = f", speed={entry.playback_speed:.1f}x" if getattr(entry, "is_fast_forward", False) else ""
                 print(
                     f"  [{idx}] {entry.file_reference}: {entry.start_trim:.2f}s -> {entry.end_trim:.2f}s "
-                    f"({entry.duration:.2f}s, transition={entry.transition_intent.value}{score_str})"
+                    f"({entry.duration:.2f}s{speed_str}, transition={entry.transition_intent.value}{score_str})"
                 )
                 print(f"      Rationale: {entry.scene_rationale}")
             print("=" * 60)
@@ -972,7 +973,8 @@ def main() -> None:
             print(f"Unique Clips Used: {len(edl.clip_references)} ({', '.join(sorted(edl.clip_references))})")
             print("-" * 60)
             for idx, entry in enumerate(edl, 1):
-                print(f"  [{idx}] Clip: {entry.file_reference} ({entry.start_trim:.2f}s -> {entry.end_trim:.2f}s | {entry.duration:.2f}s) | Transition: {entry.transition_intent.value}")
+                speed_str = f" | {entry.playback_speed:.1f}x" if getattr(entry, "is_fast_forward", False) else ""
+                print(f"  [{idx}] Clip: {entry.file_reference} ({entry.start_trim:.2f}s -> {entry.end_trim:.2f}s | {entry.duration:.2f}s{speed_str}) | Transition: {entry.transition_intent.value}")
                 print(f"      Rationale: {entry.scene_rationale}")
             print("=" * 60)
         except Exception as exc:

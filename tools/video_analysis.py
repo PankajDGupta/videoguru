@@ -69,6 +69,7 @@ def build_analysis_prompt(
             f"- scene_rationale must explain why this segment was selected and how it highlights '{theme}'.",
             f"- transition_intent must be one of: cut, fade, wipe, slide, dissolve.",
             f"- engagement_score must be a float between 0.0 and 10.0.",
+            f"- playback_speed must be a float (default 1.0). Set to 2.0 or 4.0 if the segment contains slow action, walking, travel, setup, or montage that benefits from fast-forwarding for viewer retention.",
         ]
     )
     return "\n".join(lines)
@@ -137,6 +138,7 @@ def mock_clip_analysis(
     clip_id: str,
     duration: float,
     theme: str,
+    playback_speed: float = 1.0,
 ) -> EDLEntry:
     """Generate a deterministic mock EDLEntry for offline execution and testing."""
     if duration <= 1.0:
@@ -161,6 +163,7 @@ def mock_clip_analysis(
         ),
         transition_intent=TransitionIntent.CUT,
         engagement_score=8.5,
+        playback_speed=playback_speed,
     )
 
 
@@ -391,6 +394,7 @@ def _parse_gemini_response(
         scene_rationale=entry.scene_rationale.strip() or f"Selected segment for clip {file_ref}.",
         transition_intent=entry.transition_intent,
         engagement_score=entry.engagement_score,
+        playback_speed=getattr(entry, "playback_speed", 1.0),
     )
 
 

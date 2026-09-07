@@ -427,3 +427,97 @@ class TestValidateEdlCliIntegration:
         assert exc_info.value.code == 1
         captured = capsys.readouterr()
         assert "EDL validation failed" in captured.err
+
+    def test_playback_speed_defaults_to_one(self):
+        entry = EDLEntry(
+            file_reference="vid_001",
+            start_trim=1.0,
+            end_trim=5.0,
+            scene_rationale="Default speed cut",
+        )
+        assert entry.playback_speed == 1.0
+        assert entry.source_duration == 4.0
+        assert entry.duration == 4.0
+        assert not entry.is_fast_forward
+
+    def test_playback_speed_fast_forward_scaling(self):
+        entry = EDLEntry(
+            file_reference="vid_001",
+            start_trim=0.0,
+            end_trim=10.0,
+            scene_rationale="Fast-forwarded montage segment",
+            playback_speed=2.0,
+        )
+        assert entry.playback_speed == 2.0
+        assert entry.source_duration == 10.0
+        assert entry.duration == 5.0
+        assert entry.is_fast_forward
+
+    def test_playback_speed_speed_alias_dict(self):
+        data = {
+            "file_reference": "vid_alias",
+            "start_trim": 0.0,
+            "end_trim": 12.0,
+            "scene_rationale": "Using speed alias",
+            "speed": 4.0,
+        }
+        entry = EDLEntry.model_validate(data)
+        assert entry.playback_speed == 4.0
+        assert entry.source_duration == 12.0
+        assert entry.duration == 3.0
+        assert entry.is_fast_forward
+
+    def test_playback_speed_validation_bounds(self):
+        from pydantic import ValidationError
+
+        # Invalid non-positive speed
+        with pytest.raises(ValidationError):
+            EDLEntry(
+                file_reference="vid_001",
+                start_trim=0.0,
+                end_trim=5.0,
+                scene_rationale="Zero speed",
+                playback_speed=0.0,
+            )
+
+        # Invalid speed below 0.25
+        with pytest.raises(ValidationError):
+            EDLEntry(
+                file_reference="vid_001",
+                start_trim=0.0,
+                end_trim=5.0,
+                scene_rationale="Too slow",
+                playback_speed=0.1,
+            )
+
+        # Invalid speed above 16.0
+        with pytest.raises(ValidationError):
+            EDLEntry(
+                file_reference="vid_001",
+                start_trim=0.0,
+                end_trim=5.0,
+                scene_rationale="Too fast",
+                playback_speed=20.0,
+            )
+
+    def test_edl_total_duration_with_fast_forward(self):
+        edl = EditDecisionList(
+            entries=[
+                EDLEntry(
+                    file_reference="vid_001",
+                    start_trim=0.0,
+                    end_trim=10.0,
+                    scene_rationale="2x fast forward",
+                    playback_speed=2.0,
+                ),
+                EDLEntry(
+                    file_reference="vid_002",
+                    start_trim=0.0,
+                    end_trim=4.0,
+                    scene_rationale="Standard speed",
+                    playback_speed=1.0,
+                ),
+            ]
+        )
+        # vid_001 is 10/2 = 5s, vid_002 is 4/1 = 4s -> total = 9s
+        assert edl.total_duration == 9.0

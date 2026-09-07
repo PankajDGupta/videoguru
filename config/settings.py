@@ -60,9 +60,9 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")
 
 try:
-    MAX_LOOP_ITERATIONS = int(os.getenv("MAX_LOOP_ITERATIONS", "5"))
+    MAX_LOOP_ITERATIONS = int(os.getenv("MAX_LOOP_ITERATIONS", "10"))
 except (ValueError, TypeError):
-    MAX_LOOP_ITERATIONS = 5
+    MAX_LOOP_ITERATIONS = 10
 
 # Application & Web Server Configuration
 APP_NAME = os.getenv("APP_NAME", "videoguru")

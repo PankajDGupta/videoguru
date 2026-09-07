@@ -161,6 +161,45 @@ def escape_subtitles_path(path: Union[str, Path]) -> str:
     return p
 
 
+def build_atempo_filter(speed: float) -> str:
+    """Build a chained atempo audio filter for speeds between 0.25 and 16.0.
+
+    FFmpeg's `atempo` filter accepts values strictly between 0.5 and 2.0.
+    For speeds outside this range, multiple atempo filters must be chained in series
+    (e.g., 4.0x speed requires 'atempo=2.0000,atempo=2.0000').
+
+    Args:
+        speed: Playback speed multiplier (> 0.0).
+
+    Returns:
+        Comma-separated string of atempo filters, or empty string if speed is 1.0.
+
+    Raises:
+        ValueError: If speed <= 0.0.
+    """
+    if speed <= 0.0:
+        raise ValueError(f"Speed multiplier must be positive, got {speed}")
+
+    if abs(speed - 1.0) < 1e-4:
+        return ""
+
+    filters: list[str] = []
+    curr = float(speed)
+
+    # For speed > 2.0, chain atempo=2.0 factors
+    while curr > 2.0:
+        filters.append("atempo=2.0000")
+        curr /= 2.0
+
+    # For speed < 0.5, chain atempo=0.5 factors
+    while curr < 0.5:
+        filters.append("atempo=0.5000")
+        curr /= 0.5
+
+    filters.append(f"atempo={curr:.4f}")
+    return ",".join(filters)
+
+
 def build_trim_command(
     clip_path: Union[str, Path],
     start: float,
@@ -168,11 +207,14 @@ def build_trim_command(
     output_path: Union[str, Path],
     target_resolution: str = "1920x1080",
     target_fps: float = 30.0,
+    playback_speed: float = 1.0,
+    has_audio: bool = True,
 ) -> list[str]:
-    """Build an FFmpeg CLI command to trim and normalize a single video clip.
+    """Build an FFmpeg CLI command to trim, normalize, and speed-adjust a single video clip.
 
-    Normalizes video to target resolution (with aspect-ratio preservation and padding)
-    and target frame rate for seamless downstream concatenation.
+    Normalizes video to target resolution (with aspect-ratio preservation and padding),
+    target frame rate, and applies presentation timestamp (setpts) and audio tempo (atempo)
+    speed scaling for seamless downstream concatenation.
 
     Args:
         clip_path: Path to the source video clip.
@@ -181,12 +223,15 @@ def build_trim_command(
         output_path: Destination path for the trimmed video clip.
         target_resolution: Normalized resolution in 'WIDTHxHEIGHT' format (default: '1920x1080').
         target_fps: Normalized frame rate (default: 30.0).
+        playback_speed: Playback speed multiplier (default: 1.0; e.g. 2.0 for 2x fast-forward).
+        has_audio: Whether the source clip has an audio track to preserve and speed-scale.
 
     Returns:
         List of FFmpeg command arguments.
 
     Raises:
-        ValueError: If start < 0, end <= start, target_fps <= 0, or invalid resolution format.
+        ValueError: If start < 0, end <= start, target_fps <= 0, playback_speed <= 0,
+                    or invalid resolution format.
     """
     str_clip = str(clip_path).strip()
     str_out = str(output_path).strip()
@@ -201,6 +246,8 @@ def build_trim_command(
         raise ValueError(f"end trim must be strictly greater than start trim ({end} <= {start})")
     if target_fps <= 0.0:
         raise ValueError(f"target_fps must be positive, got {target_fps}")
+    if playback_speed <= 0.0:
+        raise ValueError(f"playback_speed must be positive, got {playback_speed}")
 
     res_match = re.match(r"^(\d+)x(\d+)$", target_resolution.strip().lower())
     if not res_match:
@@ -213,12 +260,21 @@ def build_trim_command(
         raise ValueError(f"Resolution dimensions must be positive, got {width}x{height}")
 
     ffmpeg_bin = find_ffmpeg_executable()
-    vf_filter = (
-        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={target_fps}"
-    )
 
-    return [
+    filter_parts = []
+    if abs(playback_speed - 1.0) > 1e-4:
+        pts_factor = 1.0 / playback_speed
+        filter_parts.append(f"setpts={pts_factor:.6f}*PTS")
+
+    filter_parts.extend([
+        f"scale={width}:{height}:force_original_aspect_ratio=decrease",
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
+        "setsar=1",
+        f"fps={target_fps}",
+    ])
+    vf_filter = ",".join(filter_parts)
+
+    cmd = [
         ffmpeg_bin,
         "-y",
         "-ss",
@@ -235,12 +291,19 @@ def build_trim_command(
         "fast",
         "-crf",
         "23",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
-        str_out,
     ]
+
+    if has_audio:
+        if abs(playback_speed - 1.0) > 1e-4:
+            af_filter = build_atempo_filter(playback_speed)
+            if af_filter:
+                cmd.extend(["-af", af_filter])
+        cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+    else:
+        cmd.append("-an")
+
+    cmd.append(str_out)
+    return cmd
 
 
 def calculate_xfade_offsets(

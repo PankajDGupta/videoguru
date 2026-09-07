@@ -80,6 +80,21 @@ class EDLEntry(BaseModel):
         le=10.0,
         description="Quality, narrative resonance, and thematic relevance score (0.0 to 10.0) evaluated by Gemini multimodal analysis.",
     )
+    playback_speed: float = Field(
+        default=1.0,
+        ge=0.25,
+        le=16.0,
+        description="Playback speed multiplier for the clip segment (e.g. 1.0 for normal speed, 2.0 for 2x fast-forward, 4.0 for montage/timelapse).",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def handle_speed_alias(cls, data: Any) -> Any:
+        """Allow 'speed' as an alias for 'playback_speed'."""
+        if isinstance(data, dict):
+            if "speed" in data and "playback_speed" not in data:
+                data["playback_speed"] = data["speed"]
+        return data
 
     @field_validator("file_reference")
     @classmethod
@@ -106,6 +121,19 @@ class EDLEntry(BaseModel):
             return TransitionIntent.from_str(v)
         raise ValueError(f"Invalid type for transition_intent: {type(v).__name__}")
 
+    @field_validator("playback_speed", mode="before")
+    @classmethod
+    def normalize_playback_speed(cls, v: Any) -> float:
+        if v is None:
+            return 1.0
+        try:
+            val = float(v)
+        except (TypeError, ValueError):
+            raise ValueError(f"Invalid playback_speed: {v}. Expected numeric value.")
+        if val <= 0.0:
+            raise ValueError(f"playback_speed must be positive, got {val}")
+        return val
+
     @model_validator(mode="after")
     def validate_trim_duration(self) -> EDLEntry:
         """Ensure end_trim is strictly greater than start_trim."""
@@ -116,9 +144,20 @@ class EDLEntry(BaseModel):
         return self
 
     @property
-    def duration(self) -> float:
-        """Calculated segment duration in seconds."""
+    def source_duration(self) -> float:
+        """Source segment duration in seconds prior to speed modification."""
         return self.end_trim - self.start_trim
+
+    @property
+    def duration(self) -> float:
+        """Calculated timeline segment duration in seconds after speed adjustment."""
+        speed = self.playback_speed if self.playback_speed > 0 else 1.0
+        return (self.end_trim - self.start_trim) / speed
+
+    @property
+    def is_fast_forward(self) -> bool:
+        """Return True if this segment is sped up beyond real-time playback (speed > 1.0)."""
+        return self.playback_speed > 1.0
 
     @property
     def clip_id(self) -> str:

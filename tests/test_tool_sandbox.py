@@ -234,10 +234,48 @@ class TestBeforeToolSandboxCallback:
             )
 
     def test_callback_blocks_shell_metacharacters_in_kwargs(self, sandbox_dirs):
+        """Shell metacharacter check still fires for shell-executing tools."""
         bad_args = {"theme": "Vacation; rm -rf /"}
         with pytest.raises(SecuritySandboxingError, match="Shell metacharacters detected"):
             before_tool_sandbox_callback(
                 tool=self.MockTool(),
+                args=bad_args,
+                allowed_dirs=sandbox_dirs,
+            )
+
+    def test_callback_allows_markdown_feedback_for_non_shell_tools(self, sandbox_dirs):
+        """Non-shell tools (e.g., append_to_state) should pass through markdown text."""
+
+        class MockAppendTool:
+            name = "append_to_state"
+
+        markdown_feedback = (
+            "**Key Issues:**\n\n"
+            "1. **Weak Hook:** Opening is too long (33s) and unengaging.\n"
+            "2. Cut duration > 10s leads to monotony.\n"
+            "* **Action:** Shorten `vid_e6a9382b` to **under 5 seconds**.\n"
+            "* Use $dynamic content$ and > emphasis for engagement.\n"
+            "* Consider L-cuts/J-cuts & quick dissolves."
+        )
+        args = {"key": "critic_review", "value": markdown_feedback}
+        result = before_tool_sandbox_callback(
+            tool=MockAppendTool(),
+            args=args,
+            allowed_dirs=sandbox_dirs,
+        )
+        assert result is None  # Should NOT be blocked
+
+    def test_callback_still_validates_paths_for_non_shell_tools(self, sandbox_dirs):
+        """Path confinement still applies even for non-shell tools."""
+
+        class MockAnalyzeTool:
+            name = "analyze_clip"
+
+        media_dir = sandbox_dirs[0]
+        bad_args = {"clip_path": str(media_dir) + "/../secret.key"}
+        with pytest.raises(SecuritySandboxingError, match="Path traversal"):
+            before_tool_sandbox_callback(
+                tool=MockAnalyzeTool(),
                 args=bad_args,
                 allowed_dirs=sandbox_dirs,
             )

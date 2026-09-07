@@ -250,7 +250,7 @@ def evaluate_edl_heuristically(
         if entry.duration > MAX_CUT_DURATION_THRESHOLD:
             rec = (
                 f"Cut #{idx} ('{entry.file_reference}') duration is {entry.duration:.1f}s (> {MAX_CUT_DURATION_THRESHOLD:.1f}s). "
-                f"Trim segment or split with b-roll to maintain pacing."
+                f"Trim segment, fast-forward (e.g. 2x speed), or split with b-roll to maintain pacing."
             )
             recommendations.append(rec)
             concerns.append(f"Cut #{idx} is too long ({entry.duration:.1f}s) without a visual transition.")

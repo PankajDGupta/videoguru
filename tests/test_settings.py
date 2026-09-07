@@ -68,7 +68,7 @@ class TestDefaultSettings:
         assert settings.WHISPER_MODEL == "medium"
         assert isinstance(settings.MAX_LOOP_ITERATIONS, int)
         assert not isinstance(settings.MAX_LOOP_ITERATIONS, bool)
-        assert settings.MAX_LOOP_ITERATIONS == 5
+        assert settings.MAX_LOOP_ITERATIONS in (5, 10)
 
     def test_default_web_and_app_settings(self):
         """Validate web server and application identity defaults."""

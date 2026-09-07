@@ -143,6 +143,26 @@ class ReviewerAgent(Agent):
                 ),
             )
         else:
+            # Pre-check: ensure EDL exists before delegating to LLM
+            raw_edl = ctx.session.state.get("edl")
+            if not raw_edl:
+                logger.warning("ReviewerAgent: No EDL found in session state (live mode).")
+                yield Event(
+                    author=self.name,
+                    content=types.Content(
+                        parts=[
+                            types.Part.from_text(
+                                text=(
+                                    "[ReviewerAgent] Cannot perform algorithmic review: No Edit Decision List "
+                                    "found in session state. The Curation Agent may not have stored the EDL. "
+                                    "Please ensure curate_edit_decision_list was called."
+                                )
+                            )
+                        ]
+                    ),
+                )
+                return
+
             # Live LLM execution via Google ADK
             async for event in super()._run_async_impl(ctx):
                 yield event

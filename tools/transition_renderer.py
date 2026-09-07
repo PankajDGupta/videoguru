@@ -221,11 +221,13 @@ def render_with_transitions(
     if len(resolved_edl.entries) == 1:
         cut = resolved_edl.entries[0]
         clip = manifest_map[cut.file_reference]
+        cut_speed = getattr(cut, "playback_speed", 1.0)
         logger.info(
-            "Rendering single cut EDL directly: clip=%s, start=%.3f, end=%.3f -> %s",
+            "Rendering single cut EDL directly: clip=%s, start=%.3f, end=%.3f, speed=%.2fx -> %s",
             cut.file_reference,
             cut.start_trim,
             cut.end_trim,
+            cut_speed,
             target_output,
         )
         trim_cmd = build_trim_command(
@@ -235,6 +237,8 @@ def render_with_transitions(
             output_path=target_output,
             target_resolution="1920x1080",
             target_fps=30.0,
+            playback_speed=cut_speed,
+            has_audio=clip.has_audio,
         )
         execute_ffmpeg_command(trim_cmd)
 
@@ -270,6 +274,7 @@ def render_with_transitions(
     for idx, cut in enumerate(resolved_edl.entries):
         clip = manifest_map[cut.file_reference]
         staged_clip = stage_path / f"cut_{idx}_{cut.file_reference}.mp4"
+        cut_speed = getattr(cut, "playback_speed", 1.0)
 
         trim_cmd = build_trim_command(
             clip_path=clip.absolute_path,
@@ -278,14 +283,17 @@ def render_with_transitions(
             output_path=staged_clip,
             target_resolution="1920x1080",
             target_fps=30.0,
+            playback_speed=cut_speed,
+            has_audio=clip.has_audio,
         )
         logger.info(
-            "Pre-trimming cut %d/%d (clip=%s, range=[%.2f, %.2f]) -> %s",
+            "Pre-trimming cut %d/%d (clip=%s, range=[%.2f, %.2f], speed=%.2fx) -> %s",
             idx + 1,
             len(resolved_edl),
             cut.file_reference,
             cut.start_trim,
             cut.end_trim,
+            cut_speed,
             staged_clip,
         )
         execute_ffmpeg_command(trim_cmd)

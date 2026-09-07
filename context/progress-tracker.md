@@ -1,6 +1,6 @@
 # VideoGuru — Progress Tracker
 
-> **Last Updated:** 2026-09-06
+> **Last Updated:** 2026-09-08
 >
 > Track the completion status of each spec. Update this file as work progresses.
 
@@ -74,8 +74,8 @@
 
 | Spec | Title | Status | Assignee | Notes |
 |------|-------|--------|----------|-------|
-| SPEC-016 | FFmpeg Command Builder | ✅ | Antigravity | ffmpeg_builder module implemented with build_trim_command, build_xfade_chain, build_audio_crossfade, build_ducking_command, build_caption_burn_command with Windows path escaping, and sandboxed execute_ffmpeg_command, 55 unit tests passing |
-| SPEC-017 | Transition Rendering Tool | ✅ | Antigravity | render_with_transitions tool implemented with pre-trimming, normalization (1920x1080 @ 30fps), xfade & acrossfade filter graph assembly, state resolution, single-cut fallback, and session state updates, 23 unit tests passing |
+| SPEC-016 | FFmpeg Command Builder | ✅ | Antigravity | ffmpeg_builder module implemented with build_trim_command (supporting fast-forward setpts & atempo audio scaling), build_atempo_filter, build_xfade_chain, build_audio_crossfade, build_ducking_command, build_caption_burn_command with Windows path escaping, and sandboxed execute_ffmpeg_command, 63 unit tests passing |
+| SPEC-017 | Transition Rendering Tool | ✅ | Antigravity | render_with_transitions tool implemented with pre-trimming, speed ramping, normalization (1920x1080 @ 30fps), xfade & acrossfade filter graph assembly, state resolution, single-cut fallback, and session state updates, 26 unit & real FFmpeg integration tests passing |
 | SPEC-018 | Audio Ducking Tool | ✅ | Antigravity | Custom ADK tool apply_audio_ducking implemented with sidechaincompress filter, state resolution, auto-discovery, and parameter validation; exported in tools; 17 unit tests passing |
 | SPEC-019 | Whisper Captioning Tool | ✅ | Antigravity | whisper_captioning module implemented with format_timestamp_srt, write_srt_file, transcribe_audio_whisper (with offline mock fallback), burn_subtitles_to_video, and generate_captions ADK tool with session state updates, 25 unit tests passing (351 total tests passing) |
 | SPEC-020 | Enhancement & Rendering Agent | ✅ | Antigravity | EnhancementRenderingAgent implemented orchestrating xfade transitions, audio ducking, Whisper captions, output directory placement, and session.state['final_video_path'] update; CLI --render-edl, --duck-audio, --generate-captions added; 10 unit tests passing (384 total tests passing) |
@@ -144,6 +144,8 @@
   - SPEC-029: Error Handling & Graceful Degradation — ✅ Completed (13 tests).
   - SPEC-030: Documentation & README — ✅ Completed (42 tests).
 - **All 30 Specs (Phase 0 through Phase VIII) are 100% complete and verified.**
+- **Feature Extension: Fast-Forward / Playback Speed Ramping — ✅ Completed.**
+- **Autonomous Loop Stability: Tool sandbox shell check scoped to CLI tools and Curation EDL state fallback added — ✅ Completed (624 tests passing).**
 - **Next Action:** Architectural documentation generated in `context/project-architecture.md` for onboarding new agents and contributors.
 
 

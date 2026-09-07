@@ -340,3 +340,123 @@ class TestRenderWithTransitions:
                 clip_manifest=sample_clip_manifest,
                 output_path=tmp_path / "out.mp4",
             )
+
+    @patch("tools.transition_renderer.execute_ffmpeg_command")
+    def test_render_single_cut_fast_forward(self, mock_exec, sample_clip_manifest, tmp_path):
+        out_file = tmp_path / "single_2x.mp4"
+        edl = EditDecisionList(
+            entries=[
+                EDLEntry(
+                    file_reference="clip_01",
+                    start_trim=0.0,
+                    end_trim=10.0,
+                    scene_rationale="2x single cut",
+                    playback_speed=2.0,
+                )
+            ]
+        )
+        res = render_with_transitions(
+            edl=edl,
+            clip_manifest=sample_clip_manifest,
+            output_path=out_file,
+        )
+        assert res == str(out_file.resolve())
+        mock_exec.assert_called_once()
+        cmd = mock_exec.call_args[0][0]
+        vf_idx = cmd.index("-vf")
+        assert "setpts=0.500000*PTS" in cmd[vf_idx + 1]
+        assert "-af" in cmd
+        af_idx = cmd.index("-af")
+        assert "atempo=2.0000" in cmd[af_idx + 1]
+
+    @patch("tools.transition_renderer.execute_ffmpeg_command")
+    def test_render_multi_cut_fast_forward(self, mock_exec, sample_clip_manifest, tmp_path):
+        out_file = tmp_path / "multi_2x.mp4"
+        edl = EditDecisionList(
+            entries=[
+                EDLEntry(
+                    file_reference="clip_01",
+                    start_trim=0.0,
+                    end_trim=10.0,
+                    scene_rationale="Fast cut 1",
+                    playback_speed=2.0,
+                ),
+                EDLEntry(
+                    file_reference="clip_02",
+                    start_trim=0.0,
+                    end_trim=6.0,
+                    scene_rationale="Normal cut 2",
+                    playback_speed=1.0,
+                ),
+            ]
+        )
+        res = render_with_transitions(
+            edl=edl,
+            clip_manifest=sample_clip_manifest,
+            output_path=out_file,
+        )
+        assert res == str(out_file.resolve())
+        assert mock_exec.call_count == 3
+        # Pre-trim for clip_01 (index 0)
+        trim_cmd_0 = mock_exec.call_args_list[0][0][0]
+        vf_idx = trim_cmd_0.index("-vf")
+        assert "setpts=0.500000*PTS" in trim_cmd_0[vf_idx + 1]
+        # Pre-trim for clip_02 (index 1)
+        trim_cmd_1 = mock_exec.call_args_list[1][0][0]
+        vf_idx_1 = trim_cmd_1.index("-vf")
+        assert "setpts=" not in trim_cmd_1[vf_idx_1 + 1]
+        # xfade command (index 2): clip_01 is 10/2=5s, transition=1s -> offset=4.0
+        xfade_cmd = mock_exec.call_args_list[2][0][0]
+        fc_idx = xfade_cmd.index("-filter_complex")
+        assert "offset=4.0" in xfade_cmd[fc_idx + 1]
+
+    def test_render_fast_forward_real_ffmpeg(self, tmp_path):
+        """End-to-end integration test executing real FFmpeg binary to verify 2x speed rendering."""
+        import subprocess
+        from rendering.ffmpeg_builder import find_ffmpeg_executable
+        from tools.clip_metadata import extract_clip_metadata
+
+        ffmpeg_bin = find_ffmpeg_executable()
+        synth_clip = tmp_path / "synth_4s.mp4"
+        out_rendered = tmp_path / "rendered_2x.mp4"
+
+        # Generate a 4.0-second synthetic test video with audio
+        subprocess.run(
+            [
+                ffmpeg_bin,
+                "-y",
+                "-f", "lavfi", "-i", "testsrc=duration=4:size=640x360:rate=30",
+                "-f", "lavfi", "-i", "sine=frequency=1000:duration=4",
+                "-c:v", "libx264", "-c:a", "aac",
+                str(synth_clip),
+            ],
+            check=True,
+            capture_output=True,
+        )
+
+        manifest_entry = extract_clip_metadata(str(synth_clip))
+        assert abs(manifest_entry.duration_seconds - 4.0) < 0.2
+
+        edl = EditDecisionList(
+            entries=[
+                EDLEntry(
+                    file_reference=manifest_entry.clip_id,
+                    start_trim=0.0,
+                    end_trim=4.0,
+                    scene_rationale="2x fast forward test",
+                    playback_speed=2.0,
+                )
+            ]
+        )
+
+        rendered_path = render_with_transitions(
+            edl=edl,
+            clip_manifest=[manifest_entry],
+            output_path=out_rendered,
+        )
+
+        assert Path(rendered_path).exists()
+        out_meta = extract_clip_metadata(str(out_rendered))
+        # 4s clip played at 2x speed must be ~2.0s duration
+        assert abs(out_meta.duration_seconds - 2.0) < 0.3
+        assert out_meta.has_audio

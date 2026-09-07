@@ -91,6 +91,19 @@ FORBIDDEN_PROTOCOLS: Sequence[str] = [
 # Shell injection metacharacters
 SHELL_INJECTION_PATTERN = re.compile(r"[;&|`$><\n\r]")
 
+# Tools that directly execute shell commands and therefore need blanket
+# string-argument shell metacharacter validation.  All other tools either:
+#   • call Python APIs (no shell risk),
+#   • use pathlib/ffprobe through validated wrappers (paths already checked
+#     in step 2 via validate_path_confined, which itself calls is_shell_safe), or
+#   • store text in session state (append_to_state, exit_loop, etc.).
+# Applying the blanket check to tools like append_to_state causes false
+# positives because LLM-generated feedback text legitimately contains
+# markdown characters (**, *, >, `, $, etc.).
+_SHELL_EXECUTING_TOOLS: frozenset[str] = frozenset({
+    "execute_ffmpeg_command",
+})
+
 # Known sensitive system root paths
 DISALLOWED_ROOT_PREFIXES: Sequence[str] = [
     "/etc",
@@ -349,13 +362,19 @@ def before_tool_sandbox_callback(
                         if isinstance(item, (str, Path)):
                             validate_path_confined(item, allowed_dirs=allowed_dirs)
 
-        # 3. Check for shell injection in all string arguments
-        for k, v in args.items():
-            if isinstance(v, str) and not is_shell_safe(v):
-                # Only check if not already caught
-                raise SecuritySandboxingError(
-                    f"Shell metacharacters detected in argument '{k}': '{v}'"
-                )
+        # 3. Check for shell injection in all string arguments — but ONLY for
+        #    tools that directly execute shell commands.  For data-only tools
+        #    (append_to_state, exit_loop, review_edl_as_critic, etc.) the text
+        #    arguments legitimately contain markdown/natural-language characters
+        #    like **, >, `, $ which would cause false-positive blocks.
+        #    Path arguments are already shell-checked inside validate_path_confined
+        #    (step 2), so non-shell tools remain protected against path injection.
+        if tool_name in _SHELL_EXECUTING_TOOLS:
+            for k, v in args.items():
+                if isinstance(v, str) and not is_shell_safe(v):
+                    raise SecuritySandboxingError(
+                        f"Shell metacharacters detected in argument '{k}': '{v}'"
+                    )
 
     except SecuritySandboxingError as exc:
         logger.warning(
