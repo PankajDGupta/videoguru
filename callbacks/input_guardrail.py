@@ -51,7 +51,8 @@ INJECTION_PATTERNS: Sequence[tuple[str, re.Pattern[str]]] = [
     (
         "remote_download_command",
         re.compile(
-            r"(?i)\b(curl|wget|git\s+clone|invoke-webrequest|nc|netcat|ncat)\b"
+            r"(?i)\b((?:curl|wget)\s+(?:-[a-zA-Z0-9]|--[a-zA-Z0-9]|https?://|ftp://|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})|"
+            r"git\s+clone\s+|invoke-webrequest\s+|(?:nc|netcat|ncat)\s+-[a-zA-Z0-9])"
         ),
     ),
     (

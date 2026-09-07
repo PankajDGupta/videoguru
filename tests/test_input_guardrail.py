@@ -38,6 +38,9 @@ class TestInputGuardrailSafetyChecks:
             "Summer beach party highlight reel with sunset time lapse and music.",
             "Cooking authentic Italian pizza in a wood-fired oven.",
             "Family reunion at Lake Tahoe celebrating grandparents 50th anniversary.",
+            "Morning workout with bicep curl exercises and gym fitness training.",
+            "Gym workout: intense dumbbell curl routine, pull-ups, and stretching.",
+            "The presenter demonstrates proper form during an arm curl.",
         ],
     )
     def test_safe_prompts_pass(self, safe_prompt: str):
