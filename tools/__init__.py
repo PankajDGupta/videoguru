@@ -28,6 +28,11 @@ from tools.otio_converter import (
     edl_to_otio,
     load_otio_timeline,
 )
+from tools.overlay_text_tools import (
+    burn_overlay_text,
+    generate_overlay_text_plan,
+    generate_overlay_texts_with_gemini,
+)
 from tools.review_tools import (
     calculate_hook_metrics,
     calculate_pacing_metrics,
@@ -64,6 +69,7 @@ __all__ = [
     "assemble_edl_from_manifest",
     "build_analysis_prompt",
     "build_clip_manifest",
+    "burn_overlay_text",
     "burn_subtitles_to_video",
     "calculate_hook_metrics",
     "calculate_pacing_metrics",
@@ -77,6 +83,8 @@ __all__ = [
     "find_ffprobe_executable",
     "format_timestamp_srt",
     "generate_captions",
+    "generate_overlay_text_plan",
+    "generate_overlay_texts_with_gemini",
     "get_clip_manifest_from_state",
     "get_edl_from_state",
     "get_review_from_state",

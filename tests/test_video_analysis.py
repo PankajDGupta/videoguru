@@ -344,6 +344,46 @@ class TestGeminiLiveAnalysisWithMockClient:
         assert entry.end_trim <= 2.0
         assert entry.duration <= 1.5
 
+    def test_mmss_decimal_notation_normalized_to_seconds(self):
+        """Verify that MM:SS decimal notation (e.g. 0.07 -> 7.0s, 0.12 -> 12.0s) is detected and scaled."""
+        from tools.video_analysis import _parse_gemini_response
+        mock_response = MagicMock()
+        mock_response.text = json.dumps(
+            {
+                "file_reference": "vid_5aee1cab",
+                "start_trim": 0.07,
+                "end_trim": 0.12,
+                "scene_rationale": "High engagement clip after visarjan.",
+                "transition_intent": "cut",
+                "engagement_score": 9.0,
+            }
+        )
+        mock_response.parsed = None
+        entry = _parse_gemini_response(mock_response, expected_clip_id="vid_5aee1cab", clip_duration=17.63)
+        assert entry.start_trim == 7.0
+        assert entry.end_trim == 12.0
+        assert entry.duration == 5.0
+
+    def test_micro_cut_duration_extended_to_minimum(self):
+        """Verify that micro cuts (< 1.2s) are automatically extended to satisfy transition duration."""
+        from tools.video_analysis import _parse_gemini_response
+        mock_response = MagicMock()
+        mock_response.text = json.dumps(
+            {
+                "file_reference": "vid_short_cut",
+                "start_trim": 2.0,
+                "end_trim": 2.1,
+                "scene_rationale": "Short cut.",
+                "transition_intent": "cut",
+                "engagement_score": 7.0,
+            }
+        )
+        mock_response.parsed = None
+        entry = _parse_gemini_response(mock_response, expected_clip_id="vid_short_cut", clip_duration=10.0)
+        assert entry.start_trim == 2.0
+        assert entry.end_trim == 3.2
+        assert entry.duration >= 1.2
+
 
 class TestMainCLIIntegration:
     """Test suite for CLI --analyze-clip integration."""

@@ -30,9 +30,11 @@ INGESTION_INSTRUCTION = (
     "You are the Ingestion and Contextualization Agent for VideoGuru, an automated AI video production system. "
     "Your primary responsibility is Media Ingestion and Manifest Construction (Phase I):\n"
     "1. Ingest raw video files from the creator's local media directory (downloaded from Google Photos).\n"
-    "2. Use the `scan_local_directory` and `extract_clip_metadata` tools, or the composite `ingest_media_directory` tool, "
-    "to discover video files (.mp4, .mov, .avi, .mkv) and extract deep stream metadata (duration, frame rate, resolution, codecs, clip ID).\n"
-    "3. Build the full Clip Manifest (list of ClipManifestEntry) and ensure it is saved in session state under 'clip_manifest'.\n"
+    "2. Immediately call the composite `ingest_media_directory` tool to discover video files (.mp4, .mov, .avi, .mkv) "
+    "and extract deep stream metadata (duration, frame rate, resolution, codecs, clip ID). "
+    "If the creator specified a directory in their message, pass it as directory_path; otherwise call `ingest_media_directory()` "
+    "with no arguments to scan the configured session media directory. Do NOT ask the creator for a directory if one is already configured.\n"
+    "3. Ensure the full Clip Manifest (list of ClipManifestEntry) is saved in session state under 'clip_manifest'.\n"
     "4. Provide a clear, structured summary of the ingested media to the creator, including total clip count, combined duration, "
     "and resolution breakdown."
 )
@@ -151,6 +153,67 @@ class IngestionAgent(Agent):
             # Live LLM execution via Google ADK
             async for event in super()._run_async_impl(ctx):
                 yield event
+
+            # Safety check: verify the LLM or tool actually stored clip_manifest in session state.
+            # If the LLM responded conversationally instead of calling ingest_media_directory,
+            # fall back to deterministic ingestion from the configured media directory.
+            if not ctx.session.state.get("clip_manifest"):
+                logger.warning(
+                    "IngestionAgent: LLM completed but 'clip_manifest' missing from session state. "
+                    "Falling back to deterministic ingestion."
+                )
+                media_dir = ctx.session.state.get("media_dir")
+                target_dir: Optional[Path] = None
+
+                user_text = ""
+                if ctx.user_content and ctx.user_content.parts:
+                    user_text = " ".join(
+                        p.text for p in ctx.user_content.parts if getattr(p, "text", None)
+                    ).strip()
+
+                if user_text:
+                    import re
+                    dir_match = re.search(r"(?:media directory:\s*|directory:\s*)([\w\-./\\]+)", user_text, re.IGNORECASE)
+                    if dir_match:
+                        cand = Path(dir_match.group(1).strip()).resolve()
+                        if cand.exists() and cand.is_dir():
+                            target_dir = cand
+
+                    if target_dir is None:
+                        cand = Path(user_text).resolve()
+                        if cand.exists() and cand.is_dir():
+                            target_dir = cand
+
+                if target_dir is None and media_dir:
+                    cand = Path(media_dir).resolve()
+                    if cand.exists() and cand.is_dir():
+                        target_dir = cand
+
+                if target_dir is None and settings.MEDIA_INPUT_DIR:
+                    cand = Path(settings.MEDIA_INPUT_DIR).resolve()
+                    if cand.exists() and cand.is_dir():
+                        target_dir = cand
+
+                if target_dir is not None:
+                    manifest = build_clip_manifest(target_dir)
+                    serialized = [e.model_dump() for e in manifest]
+                    total_duration = sum(e.duration_seconds for e in manifest)
+                    theme = ctx.session.state.get("theme", "Not specified")
+
+                    summary_text = (
+                        f"[IngestionAgent] Fallback: Ingested {len(manifest)} clip(s) from '{target_dir}' "
+                        f"({total_duration:.2f}s total duration). Clip manifest locked in session state."
+                    )
+                    yield Event(
+                        author=self.name,
+                        content=types.Content(parts=[types.Part.from_text(text=summary_text)]),
+                        actions=EventActions(
+                            state_delta={
+                                "clip_manifest": serialized,
+                                "media_dir": str(target_dir),
+                            }
+                        ),
+                    )
 
 
 # Backwards-compatibility alias

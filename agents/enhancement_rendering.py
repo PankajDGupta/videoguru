@@ -27,8 +27,10 @@ from schemas.edl import EditDecisionList
 from tools.audio_ducking import apply_audio_ducking
 from tools.curation_tools import get_edl_from_state
 from tools.ingestion_tools import get_clip_manifest_from_state
+from tools.overlay_text_tools import burn_overlay_text, generate_overlay_texts_with_gemini, _generate_mock_overlay_texts
 from tools.transition_renderer import render_with_transitions
 from tools.whisper_captioning import generate_captions
+from schemas.overlay_text import OverlayTextPlan
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +138,39 @@ class EnhancementRenderingAgent(Agent):
             len(edl),
         )
 
+        # Sanitize EDL cuts if any cut duration <= transition_duration to safeguard rendering
+        manifest_map = {c.clip_id: c for c in manifest}
+        sanitized_cuts = []
+        edl_modified = False
+        for idx, cut in enumerate(edl.entries):
+            if cut.duration <= transition_duration:
+                clip = manifest_map.get(cut.file_reference)
+                clip_dur = clip.duration_seconds if clip else cut.end_trim
+                if clip_dur > transition_duration:
+                    target_len = min(clip_dur, max(2.5, transition_duration + 1.0))
+                    new_start = cut.start_trim
+                    new_end = min(clip_dur, new_start + target_len)
+                    if new_end - new_start <= transition_duration:
+                        new_start = max(0.0, new_end - target_len)
+                    logger.warning(
+                        "EnhancementRenderingAgent: Cut %d (%s) duration (%.3fs) was <= transition_duration (%.3fs). Auto-extended to [%.2fs, %.2fs] (duration: %.2fs).",
+                        idx,
+                        cut.file_reference,
+                        cut.duration,
+                        transition_duration,
+                        new_start,
+                        new_end,
+                        new_end - new_start,
+                    )
+                    cut = cut.model_copy(update={"start_trim": new_start, "end_trim": new_end})
+                    edl_modified = True
+            sanitized_cuts.append(cut)
+
+        if edl_modified:
+            edl = EditDecisionList(entries=sanitized_cuts)
+            if tool_ctx is not None and hasattr(tool_ctx, "state") and tool_ctx.state is not None:
+                tool_ctx.state["edl"] = edl
+
         # 2. Step 1: Render Transitions
         staging_dir = settings.STAGING_DIR / f"render_{uuid.uuid4().hex[:8]}"
         staging_dir.mkdir(parents=True, exist_ok=True)
@@ -153,6 +188,48 @@ class EnhancementRenderingAgent(Agent):
 
         from services.observability import log_render_progress
         log_render_progress("transitions", progress_percent=33.0, output_path=str(transition_path))
+
+        # 1b. Step 1b: Overlay Text Generation & Burn-in
+        overlay_input = transition_path
+        has_overlay_text = False
+
+        try:
+            # Check for pre-generated overlay texts in state, or generate new ones
+            overlay_texts_raw = state.get("overlay_texts")
+            if overlay_texts_raw and isinstance(overlay_texts_raw, list) and len(overlay_texts_raw) > 0:
+                overlay_plan = OverlayTextPlan.from_list(overlay_texts_raw, theme=state.get("theme", ""))
+            else:
+                # Generate overlay texts from theme and EDL
+                theme = state.get("theme", "")
+                if theme and edl:
+                    if self.offline:
+                        overlay_plan = _generate_mock_overlay_texts(edl, theme, transition_duration)
+                    else:
+                        overlay_plan = generate_overlay_texts_with_gemini(edl, theme, transition_duration)
+                    state["overlay_texts"] = overlay_plan.to_dict_list()
+                else:
+                    overlay_plan = None
+
+            if overlay_plan and len(overlay_plan) > 0:
+                overlay_output = staging_dir / "step1b_overlayed.mp4"
+                overlay_result = burn_overlay_text(
+                    video_path=transition_path,
+                    overlay_plan=overlay_plan,
+                    output_path=overlay_output,
+                )
+                overlay_input = overlay_result
+                has_overlay_text = True
+                logger.info("EnhancementRenderingAgent: Step 1b (Overlay Text) completed -> %s", overlay_result)
+            else:
+                logger.info("EnhancementRenderingAgent: No overlay text plan. Skipping overlay step.")
+        except Exception as exc:
+            logger.warning(
+                "EnhancementRenderingAgent: Overlay text burn-in failed (%s). Continuing without overlay text.",
+                exc,
+            )
+            overlay_input = transition_path
+
+        log_render_progress("overlay_text", progress_percent=45.0, output_path=str(overlay_input))
 
         # 3. Step 2: Audio Ducking (if background music exists)
         resolved_music: Optional[Path] = None
@@ -176,7 +253,7 @@ class EnhancementRenderingAgent(Agent):
                 if resolved_music:
                     break
 
-        ducked_path = transition_path
+        ducked_path = overlay_input
         has_ducking = False
 
         if resolved_music and resolved_music.is_file():
@@ -184,7 +261,7 @@ class EnhancementRenderingAgent(Agent):
             ducked_output = staging_dir / "step2_ducked.mp4"
             try:
                 ducked_path = apply_audio_ducking(
-                    video_path=transition_path,
+                    video_path=overlay_input,
                     music_path=str(resolved_music),
                     output_path=str(ducked_output),
                     tool_context=tool_ctx,
@@ -196,10 +273,10 @@ class EnhancementRenderingAgent(Agent):
                     "EnhancementRenderingAgent: Audio ducking failed (%s). Continuing with un-ducked audio.",
                     exc,
                 )
-                ducked_path = transition_path
+                ducked_path = overlay_input
         else:
             logger.info("EnhancementRenderingAgent: No background music track provided. Skipping ducking.")
-            tool_ctx.state["ducked_video_path"] = transition_path
+            tool_ctx.state["ducked_video_path"] = overlay_input
 
         log_render_progress("ducking", progress_percent=66.0, output_path=str(ducked_path), has_ducking=has_ducking)
 
@@ -256,6 +333,8 @@ class EnhancementRenderingAgent(Agent):
         return {
             "final_video_path": str(final_target),
             "transition_video_path": str(transition_path),
+            "overlay_text_video_path": str(overlay_input) if has_overlay_text else None,
+            "has_overlay_text": has_overlay_text,
             "ducked_video_path": str(ducked_path) if has_ducking else None,
             "srt_path": str(srt_path) if srt_path else None,
             "captioned_video_path": str(captioned_path),
@@ -265,58 +344,55 @@ class EnhancementRenderingAgent(Agent):
 
     async def _run_async_impl(self, ctx: Any) -> AsyncGenerator[Event, None]:
         """Execute the rendering agent turn across live ADK LLM or offline modes."""
-        if self.offline:
-            state = ctx.session.state
-            try:
-                result = self.execute_rendering_pipeline(state)
-                final_path = result["final_video_path"]
-                ducking_str = "Applied" if result["has_ducking"] else "None (skipped)"
-                captions_str = "Burned-in via Whisper" if result["has_captions"] else "None (skipped)"
+        state = ctx.session.state
+        try:
+            result = self.execute_rendering_pipeline(state)
+            final_path = result["final_video_path"]
+            ducking_str = "Applied" if result["has_ducking"] else "None (skipped)"
+            captions_str = "Burned-in via Whisper" if result["has_captions"] else "None (skipped)"
 
-                report = (
-                    "🎬 [Enhancement & Rendering Agent] Rendering Complete!\n\n"
-                    f"- Final Video Path: `{final_path}`\n"
-                    f"- Transitions: Applied xfade / acrossfade\n"
-                    f"- Background Audio Ducking: {ducking_str}\n"
-                    f"- Captions: {captions_str}\n"
-                    f"- Status: Ready for broadcast / YouTube upload!"
-                )
+            overlay_str = "Applied" if result.get("has_overlay_text", False) else "None (skipped)"
+            report = (
+                "🎬 [Enhancement & Rendering Agent] Rendering Complete!\n\n"
+                f"- Final Video Path: `{final_path}`\n"
+                f"- Transitions: Applied xfade / acrossfade\n"
+                f"- Overlay Text: {overlay_str}\n"
+                f"- Background Audio Ducking: {ducking_str}\n"
+                f"- Captions: {captions_str}\n"
+                f"- Status: Ready for broadcast / YouTube upload!"
+            )
 
-                yield Event(
-                    author=self.name,
-                    content=types.Content(parts=[types.Part.from_text(text=report)]),
-                    actions=EventActions(
-                        state_delta={
-                            "final_video_path": final_path,
-                            "rendering_complete": True,
-                            "transition_rendered_path": result["transition_video_path"],
-                            "ducked_video_path": result["ducked_video_path"],
-                            "srt_path": result["srt_path"],
-                        }
-                    ),
-                )
-            except Exception as exc:
-                logger.error("EnhancementRenderingAgent offline execution failed: %s", exc)
-                yield Event(
-                    author=self.name,
-                    content=types.Content(
-                        parts=[
-                            types.Part.from_text(
-                                text=f"❌ [Enhancement & Rendering Agent] Rendering failed: {exc}"
-                            )
-                        ]
-                    ),
-                    actions=EventActions(
-                        state_delta={
-                            "rendering_error": str(exc),
-                            "rendering_complete": False,
-                        }
-                    ),
-                )
-        else:
-            # Live Gemini agent invocation via ADK event loop
-            async for event in super()._run_async_impl(ctx):
-                yield event
+            yield Event(
+                author=self.name,
+                content=types.Content(parts=[types.Part.from_text(text=report)]),
+                actions=EventActions(
+                    state_delta={
+                        "final_video_path": final_path,
+                        "rendering_complete": True,
+                        "transition_rendered_path": result["transition_video_path"],
+                        "ducked_video_path": result["ducked_video_path"],
+                        "srt_path": result["srt_path"],
+                    }
+                ),
+            )
+        except Exception as exc:
+            logger.error("EnhancementRenderingAgent execution failed: %s", exc)
+            yield Event(
+                author=self.name,
+                content=types.Content(
+                    parts=[
+                        types.Part.from_text(
+                            text=f"❌ [Enhancement & Rendering Agent] Rendering failed: {exc}"
+                        )
+                    ]
+                ),
+                actions=EventActions(
+                    state_delta={
+                        "rendering_error": str(exc),
+                        "rendering_complete": False,
+                    }
+                ),
+            )
 
 
 def create_enhancement_rendering_agent(

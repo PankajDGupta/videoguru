@@ -9,6 +9,13 @@ from schemas.review import (
     PacingMetrics,
     RetentionMetrics,
 )
+from schemas.overlay_text import (
+    OverlayTextEntry,
+    OverlayTextPlan,
+    OverlayTextStyle,
+    TextPosition,
+    YOUTUBE_SHORTS_COLORS,
+)
 
 __all__ = [
     "AlgorithmicReviewResult",
@@ -16,11 +23,16 @@ __all__ = [
     "EDLEntry",
     "EditDecisionList",
     "HookMetrics",
+    "OverlayTextEntry",
+    "OverlayTextPlan",
+    "OverlayTextStyle",
     "PacingMetrics",
     "RetentionMetrics",
     "ScannedVideoFile",
+    "TextPosition",
     "ThemeIntent",
     "TransitionIntent",
+    "YOUTUBE_SHORTS_COLORS",
 ]
 
 

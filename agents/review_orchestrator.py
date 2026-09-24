@@ -81,7 +81,10 @@ class ReviewOrchestratorAgent(Agent):
 
     async def _run_async_impl(self, ctx) -> AsyncGenerator[Event, None]:
         """Execute review orchestration turn, supporting live LLM and offline handling."""
-        if self.offline:
+        state = ctx.session.state
+        is_auto_approve = bool(state.get("auto_approve", False))
+
+        if self.offline or is_auto_approve:
             # First, determine if we are responding to a user review or presenting the summary
             user_input = ""
             if hasattr(ctx, "new_message") and ctx.new_message and getattr(ctx.new_message, "parts", None):
@@ -99,11 +102,10 @@ class ReviewOrchestratorAgent(Agent):
                         p.text for p in inv_ctx.new_message.parts if getattr(p, "text", None)
                     ).strip()
                  
-            state = ctx.session.state
             status = state.get("review_status", "")
             
             # If review is already pending, treat this as user feedback
-            if status == "pending" and user_input:
+            if status == "pending" and user_input and not is_auto_approve:
                 # Wrap tool context logic
                 class SimpleToolContext:
                     def __init__(self, state_dict):

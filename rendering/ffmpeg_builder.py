@@ -645,6 +645,156 @@ def build_caption_burn_command(
     ]
 
 
+def build_drawtext_overlay_command(
+    video_path: Union[str, Path],
+    overlay_entries: list[dict[str, Any]],
+    output_path: Union[str, Path],
+) -> list[str]:
+    """Build an FFmpeg command to burn multiple overlay text entries using drawtext filters.
+
+    Each overlay entry is a dict with keys: text, start_time, end_time, and style (dict).
+    Handles Windows path escaping for FFmpeg filter strings.
+
+    Args:
+        video_path: Source video file path.
+        overlay_entries: List of overlay text configuration dicts.
+        output_path: Destination path for the output video.
+
+    Returns:
+        List of FFmpeg command arguments.
+
+    Raises:
+        ValueError: If paths are empty or no overlay entries provided.
+    """
+    str_video = str(video_path).strip()
+    str_out = str(output_path).strip()
+    if not str_video:
+        raise ValueError("video_path cannot be empty.")
+    if not str_out:
+        raise ValueError("output_path cannot be empty.")
+    if not overlay_entries:
+        raise ValueError("overlay_entries list cannot be empty.")
+
+    # Position mapping to FFmpeg y-expressions
+    position_y_map = {
+        "top": "h*0.08",
+        "upper_third": "h*0.15",
+        "center": "(h-text_h)/2",
+        "lower_third": "h*0.72",
+        "bottom": "h*0.88",
+    }
+
+    drawtext_filters: list[str] = []
+
+    for entry in overlay_entries:
+        text = entry.get("text", "").strip()
+        if not text:
+            continue
+
+        start_t = entry.get("start_time", 0.0)
+        end_t = entry.get("end_time", start_t + 3.0)
+        style = entry.get("style", {})
+
+        # Style parameters with defaults
+        font_family = style.get("font_family", "Impact")
+        font_size = style.get("font_size", 48)
+        font_color = style.get("font_color", "#FFD700")
+        border_color = style.get("border_color", "#000000")
+        border_width = style.get("border_width", 3)
+        shadow_color = style.get("shadow_color", "#000000")
+        shadow_x = style.get("shadow_x", 2)
+        shadow_y = style.get("shadow_y", 2)
+        position = style.get("position", "upper_third")
+        box_enabled = style.get("box_enabled", True)
+        box_color = style.get("box_color", "black")
+        box_opacity = style.get("box_opacity", 0.5)
+        box_border_width = style.get("box_border_width", 15)
+
+        # Resolve Y position
+        y_expr = position_y_map.get(position, position_y_map["upper_third"])
+
+        # Clean characters that standard fonts cannot render (emojis cause tofu [ ] boxes in Impact/Arial)
+        cleaned_text = re.sub(
+            r"[\U00010000-\U0010ffff\u2600-\u27bf\u2300-\u23ff\ufe0f]+",
+            "",
+            text,
+            flags=re.UNICODE,
+        )
+        cleaned_text = re.sub(r"\s+", " ", cleaned_text).strip()
+        text_to_render = cleaned_text if cleaned_text else text.strip()
+
+        # Escape text for FFmpeg drawtext (single quotes, colons, backslashes)
+        escaped_text = text_to_render.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:").replace("%", "%%")
+
+        # Build drawtext filter string.
+        # NOTE: Do NOT use between(t,start,end) because the comma separates filters in FFmpeg's filtergraph!
+        # Instead, use gte(t,start)*lte(t,end) which is comma-free and safe for chained -vf filters.
+        dt_parts = [
+            f"drawtext=text='{escaped_text}'",
+            f"fontsize={font_size}",
+            f"fontcolor={font_color}",
+            f"borderw={border_width}",
+            f"bordercolor={border_color}",
+            f"shadowcolor={shadow_color}",
+            f"shadowx={shadow_x}",
+            f"shadowy={shadow_y}",
+            f"x=(w-text_w)/2",
+            f"y={y_expr}",
+            f"enable='gte(t,{start_t:.3f})*lte(t,{end_t:.3f})'",
+        ]
+
+        # Try to resolve fontfile on Windows to avoid Fontconfig errors
+        font_resolved = False
+        if os.name == "nt" and font_family:
+            win_fonts = {
+                "impact": "C:/Windows/Fonts/impact.ttf",
+                "arial": "C:/Windows/Fonts/arial.ttf",
+                "arial black": "C:/Windows/Fonts/ariblk.ttf",
+                "segoe ui": "C:/Windows/Fonts/segoeui.ttf",
+            }
+            fpath = win_fonts.get(font_family.lower().strip())
+            if fpath and Path(fpath).exists():
+                escaped_fpath = fpath.replace(":", r"\:")
+                dt_parts.append(f"fontfile='{escaped_fpath}'")
+                font_resolved = True
+
+        if not font_resolved and font_family:
+            dt_parts.append(f"font='{font_family}'")
+
+        # Add background box if enabled
+        if box_enabled:
+            dt_parts.append(f"box=1")
+            dt_parts.append(f"boxcolor={box_color}@{box_opacity:.2f}")
+            dt_parts.append(f"boxborderw={box_border_width}")
+
+        drawtext_filters.append(":".join(dt_parts))
+
+    if not drawtext_filters:
+        raise ValueError("No valid overlay text entries to render.")
+
+    # Chain multiple drawtext filters with commas
+    vf_arg = ",".join(drawtext_filters)
+
+    ffmpeg_bin = find_ffmpeg_executable()
+    return [
+        ffmpeg_bin,
+        "-y",
+        "-i",
+        str_video,
+        "-vf",
+        vf_arg,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "23",
+        "-c:a",
+        "copy",
+        str_out,
+    ]
+
+
 def execute_ffmpeg_command(
     cmd: Sequence[str],
     timeout: float = 300.0,

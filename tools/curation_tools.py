@@ -101,8 +101,22 @@ def assemble_edl_from_manifest(
                 theme=effective_theme,
             )
             edl_entries.append(entry)
+    # Enforce minimum cut duration (>= 2.0s or full clip duration) to protect rendering transitions
+    sanitized_entries: list[EDLEntry] = []
+    manifest_by_id = {c.clip_id: c for c in manifest}
+    for entry in edl_entries:
+        clip_meta = manifest_by_id.get(entry.file_reference)
+        clip_dur = clip_meta.duration_seconds if clip_meta else 10.0
+        min_dur = min(clip_dur, 2.0)
+        if entry.duration < min_dur:
+            new_start = entry.start_trim
+            new_end = min(clip_dur, new_start + min_dur)
+            if new_end - new_start < min_dur:
+                new_start = max(0.0, new_end - min_dur)
+            entry = entry.model_copy(update={"start_trim": new_start, "end_trim": new_end})
+        sanitized_entries.append(entry)
 
-    edl = EditDecisionList(entries=edl_entries)
+    edl = EditDecisionList(entries=sanitized_entries)
 
     # Validate that every cut references a known clip from the manifest
     edl.validate_clip_references(manifest, raise_on_error=True)

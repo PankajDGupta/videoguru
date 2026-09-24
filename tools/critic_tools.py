@@ -63,8 +63,10 @@ def calculate_30s_hook_metrics(edl: EditDecisionList, theme: str = "") -> Hook30
         cuts_in_30s += 1
         cut_duration = entry.duration
 
-        # Flag cuts longer than 8s in intro window as dead air risks
-        if cut_duration > MAX_INTRO_CUT_DURATION:
+        # Flag cuts longer than 8s in intro window as dead air risks, unless they have high engagement (>= 8.5) and are <= 10s, or use fast playback
+        is_fast = getattr(entry, "is_fast_forward", False) or getattr(entry, "playback_speed", 1.0) > 1.0
+        is_dynamic_hook = (entry.engagement_score is not None and entry.engagement_score >= 8.5 and cut_duration <= 10.0)
+        if cut_duration > MAX_INTRO_CUT_DURATION and not (is_fast or is_dynamic_hook):
             has_dead_air = True
 
         if entry.engagement_score is not None:

@@ -240,6 +240,43 @@ class TestExecuteRenderingPipeline:
         assert result["has_captions"] is False
         assert Path(result["final_video_path"]).is_file()
 
+    @patch("agents.enhancement_rendering.generate_captions")
+    @patch("agents.enhancement_rendering.render_with_transitions")
+    def test_pipeline_auto_extends_short_cuts(self, mock_render, mock_caps, sample_manifest, tmp_path):
+        mock_video = tmp_path / "step1.mp4"
+        mock_video.write_bytes(b"video step 1")
+        mock_render.return_value = str(mock_video)
+        mock_caps.return_value = {"captioned_video_path": str(mock_video), "srt_path": None}
+
+        short_edl = EditDecisionList(
+            entries=[
+                EDLEntry(
+                    file_reference="clip_01",
+                    start_trim=0.0,
+                    end_trim=0.5,
+                    scene_rationale="Very short cut",
+                    transition_intent=TransitionIntent.CUT,
+                ),
+                EDLEntry(
+                    file_reference="clip_01",
+                    start_trim=1.0,
+                    end_trim=6.0,
+                    scene_rationale="Normal cut",
+                    transition_intent=TransitionIntent.CUT,
+                ),
+            ]
+        )
+        state = {
+            "edl": short_edl,
+            "clip_manifest": sample_manifest,
+        }
+        agent = EnhancementRenderingAgent(offline=True)
+        res = agent.execute_rendering_pipeline(state, transition_duration=1.0)
+        assert Path(res["final_video_path"]).is_file()
+        # Verify cut 0 was auto-extended beyond transition_duration (1.0s)
+        called_edl = mock_render.call_args.kwargs["edl"]
+        assert called_edl.entries[0].duration > 1.0
+
 
 @pytest.mark.anyio
 class TestAgentRunAsyncOffline:

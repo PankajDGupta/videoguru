@@ -42,6 +42,12 @@ from agents.enhancement_rendering import (
     create_enhancement_rendering_agent,
     enhancement_rendering_agent,
 )
+from agents.overlay_text import (
+    OVERLAY_TEXT_INSTRUCTION,
+    OverlayTextAgent,
+    create_overlay_text_agent,
+    overlay_text_agent,
+)
 from agents.root_greeter import (
     ROOT_GREETER_INSTRUCTION,
     RootGreeterAgent,
@@ -68,6 +74,8 @@ __all__ = [
     "EnhancementRenderingAgent",
     "INGESTION_INSTRUCTION",
     "IngestionAgent",
+    "OVERLAY_TEXT_INSTRUCTION",
+    "OverlayTextAgent",
     "REVIEWER_INSTRUCTION",
     "REVIEW_ORCHESTRATOR_INSTRUCTION",
     "ReviewerAgent",
@@ -83,6 +91,7 @@ __all__ = [
     "create_enhancement_rendering_agent",
     "create_ingestion_agent",
     "create_loop_agent",
+    "create_overlay_text_agent",
     "create_review_orchestrator_agent",
     "create_reviewer_agent",
     "create_root_greeter_agent",
@@ -96,6 +105,7 @@ __all__ = [
     "get_root_workflow_agent",
     "ingestion_agent",
     "loop_agent",
+    "overlay_text_agent",
     "review_orchestrator_agent",
     "reviewer_agent",
     "root_agent",

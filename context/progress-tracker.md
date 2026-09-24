@@ -35,7 +35,7 @@
 | SPEC-003 | Root Greeter Agent | ✅ | Antigravity | RootGreeterAgent implemented, custom record_theme tool stores theme in session.state['theme'] and hands off to Ingestion Agent, unit & integration tests passing |
 | SPEC-004 | Local Directory Scanner Tool | ✅ | Antigravity | Custom ADK tool scan_local_directory and scan_local_directory_with_metadata implemented using pathlib, ScannedVideoFile schema created, CLI --scan-dir added, unit & integration tests passing |
 | SPEC-005 | Clip Metadata Extraction Tool | ✅ | Antigravity | Custom ADK tool extract_clip_metadata and probe_video_file implemented using ffprobe, ClipManifestEntry schema created with UUID-based clip_id, CLI --extract-metadata added, unit & integration tests passing |
-| SPEC-006 | Ingestion Agent | ✅ | Antigravity | IngestionAgent implemented with scan_local_directory and extract_clip_metadata orchestration, build_clip_manifest and ingest_media_directory tools created, Clip Manifest stored in session.state['clip_manifest'], CLI --ingest-dir added, unit & integration tests passing |
+| SPEC-006 | Ingestion Agent | ✅ | Antigravity | IngestionAgent implemented with scan_local_directory and extract_clip_metadata orchestration, build_clip_manifest and ingest_media_directory tools created, Clip Manifest stored in session.state['clip_manifest'], live mode fallback & instruction hardening added, CLI --ingest-dir added, unit & integration tests passing |
 
 
 ---
@@ -113,15 +113,24 @@
 
 ---
 
+## Phase IX — Feature Extensions
+
+| Spec | Title | Status | Assignee | Notes |
+|------|-------|--------|----------|-------|
+| SPEC-031 | Overlay Text Agent (YouTube Shorts Engagement) | ✅ | Antigravity | Implemented `OverlayTextAgent` in `agents/overlay_text.py`, Pydantic models in `schemas/overlay_text.py` (`OverlayTextStyle`, `OverlayTextEntry`, `OverlayTextPlan`, `TextPosition`, `YOUTUBE_SHORTS_COLORS`), FFmpeg drawtext command builder `build_drawtext_overlay_command()` in `rendering/ffmpeg_builder.py`, tools in `tools/overlay_text_tools.py` (`generate_overlay_text_plan`, `generate_overlay_texts_with_gemini`, `burn_overlay_text`, `_compute_cut_timeline_offsets`), integrated Step 1b into `EnhancementRenderingAgent.execute_rendering_pipeline()`, 44 unit tests passing in `tests/test_overlay_text.py` (672 total tests passing) |
+
+---
+
 ## Summary
 
 | Metric | Count |
 |--------|-------|
-| **Total Specs** | 30 |
-| **Completed** | 30 |
+| **Total Specs** | 31 |
+| **Completed** | 31 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
 | **Not Started** | 0 |
+
 
 ---
 
@@ -146,7 +155,11 @@
 - **All 30 Specs (Phase 0 through Phase VIII) are 100% complete and verified.**
 - **Feature Extension: Fast-Forward / Playback Speed Ramping — ✅ Completed.**
 - **Autonomous Loop Stability: Tool sandbox shell check scoped to CLI tools and Curation EDL state fallback added — ✅ Completed (624 tests passing).**
-- **Next Action:** Architectural documentation generated in `context/project-architecture.md` for onboarding new agents and contributors.
+- **Live Pipeline Hardening (iPhone Media & End-to-End Live Render): — ✅ Completed (628 tests passing):**
+  - Resolved -180° rotation on iPhone clips with automatic upright 720p proxy generation for Gemini Files API vision analysis.
+  - Added in-memory clip analysis caching (`_ANALYSIS_CACHE`) to prevent redundant re-uploads and re-analysis across editing loops.
+  - Updated Gemini curation prompt and Critic 30s hook metric to prevent false dead-air rejections on high-engagement intro cuts.
+  - Enabled live auto-approve in `ReviewOrchestratorAgent` and deterministic rendering pipeline execution in `EnhancementRenderingAgent` for live mode.
 
 
 

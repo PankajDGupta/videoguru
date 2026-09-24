@@ -298,3 +298,34 @@
   - Usage guide (how to run the pipeline).
   - Architecture diagram.
 - Add inline docstrings to all agents, tools, and schemas.
+
+---
+
+## Phase IX — Feature Extensions
+
+### SPEC-031: Overlay Text Agent (YouTube Shorts Engagement)
+
+- Implement `OverlayTextAgent` as a new agent in `agents/overlay_text.py`.
+- System prompt: Act as a YouTube Shorts viral content strategist.
+- Generate short, punchy overlay text for each EDL cut based on the theme:
+  - Cut 1 must be a strong HOOK (larger font, emojis, curiosity-driven).
+  - Subsequent cuts get scene-specific engaging text (3-8 words max).
+- Implement Pydantic schemas in `schemas/overlay_text.py`:
+  - `OverlayTextStyle`: Font family, size, color, border, shadow, position, box styling.
+  - `OverlayTextEntry`: Per-cut text content, timing, and visual style.
+  - `OverlayTextPlan`: Container for all overlay entries.
+- Add `build_drawtext_overlay_command()` to `rendering/ffmpeg_builder.py`:
+  - Build FFmpeg `drawtext` filter chains with per-entry enable/disable timing.
+  - Support vibrant rotating color palette (`YOUTUBE_SHORTS_COLORS`).
+  - Position text in upper-third (safe from YouTube Shorts UI).
+- Implement tools in `tools/overlay_text_tools.py`:
+  - `generate_overlay_text_plan`: ADK tool using Gemini to generate per-cut text.
+  - `generate_overlay_texts_with_gemini`: Direct Gemini API text generation.
+  - `burn_overlay_text`: FFmpeg drawtext burn-in execution.
+  - `_compute_cut_timeline_offsets`: Calculate absolute timing accounting for xfade overlaps.
+  - Offline mock mode with deterministic fallback texts.
+- Integrate into `EnhancementRenderingAgent.execute_rendering_pipeline()`:
+  - New Step 1b between transitions (Step 1) and audio ducking (Step 2).
+  - Graceful degradation: rendering continues without overlay text on failure.
+  - Store overlay plan in `session.state["overlay_texts"]`.
+- Add unit tests in `tests/test_overlay_text.py`.
