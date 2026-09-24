@@ -372,6 +372,13 @@ def parse_arguments() -> argparse.Namespace:
         help="Output structured logs in JSON format (SPEC-028).",
     )
     parser.add_argument(
+        "--log-file",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Optional file path to persist structured logs.",
+    )
+    parser.add_argument(
         "--gpu",
         dest="gpu",
         action="store_true",
