@@ -18,9 +18,11 @@ from rendering.ffmpeg_builder import (
     build_trim_command,
     build_xfade_chain,
     calculate_xfade_offsets,
+    detect_nvenc_support,
     escape_subtitles_path,
     execute_ffmpeg_command,
     find_ffmpeg_executable,
+    get_video_encoder_args,
     map_transition_intent,
 )
 from schemas.edl import TransitionIntent
@@ -96,7 +98,7 @@ class TestTrimCommand:
         assert "scale=1920:1080" in cmd[vf_idx + 1]
         assert "fps=30.0" in cmd[vf_idx + 1]
         assert "-c:v" in cmd
-        assert "libx264" in cmd
+        assert any(enc in cmd for enc in ("libx264", "h264_nvenc"))
         assert "-c:a" in cmd
         assert "aac" in cmd
         assert cmd[-1] == "trimmed.mp4"
@@ -401,7 +403,7 @@ class TestCaptionBurnCommand:
         vf = cmd[cmd.index("-vf") + 1]
         assert r"subtitles='C\:/videos/captions.srt':force_style='FontSize=18'" == vf
         assert "-c:v" in cmd
-        assert "libx264" in cmd
+        assert any(enc in cmd for enc in ("libx264", "h264_nvenc"))
         assert "-c:a" in cmd
         assert "copy" in cmd
         assert cmd[-1] == r"C:\videos\output.mp4"
@@ -594,3 +596,48 @@ class TestSpeedRampingAndAtempo:
             build_trim_command("input.mp4", 0.0, 5.0, "out.mp4", playback_speed=0.0)
         with pytest.raises(ValueError, match="playback_speed must be positive"):
             build_trim_command("input.mp4", 0.0, 5.0, "out.mp4", playback_speed=-2.0)
+
+
+class TestHardwareAcceleration:
+    """Validate GPU hardware acceleration detection and encoder configuration."""
+
+    def test_get_video_encoder_args_force_cpu(self):
+        args = get_video_encoder_args(crf=23, preset="fast", use_gpu=False)
+        assert "-c:v" in args
+        assert "libx264" in args
+        assert "-crf" in args
+        assert "23" in args
+
+    def test_get_video_encoder_args_force_gpu(self):
+        args = get_video_encoder_args(crf=20, preset="fast", use_gpu=True)
+        assert "-c:v" in args
+        assert "h264_nvenc" in args
+        assert "-pix_fmt" in args
+        assert "yuv420p" in args
+        assert "-cq" in args
+        assert "20" in args
+
+    def test_build_trim_command_force_gpu(self):
+        cmd = build_trim_command(
+            clip_path="input.mp4",
+            start=0.0,
+            end=5.0,
+            output_path="out.mp4",
+            use_gpu=True,
+        )
+        assert "h264_nvenc" in cmd
+        assert "yuv420p" in cmd
+
+    def test_build_trim_command_force_cpu(self):
+        cmd = build_trim_command(
+            clip_path="input.mp4",
+            start=0.0,
+            end=5.0,
+            output_path="out.mp4",
+            use_gpu=False,
+        )
+        assert "libx264" in cmd
+
+    def test_detect_nvenc_support_boolean(self):
+        result = detect_nvenc_support()
+        assert isinstance(result, bool)

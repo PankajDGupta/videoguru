@@ -16,6 +16,7 @@ import subprocess
 from typing import Any, Optional, Sequence, Union
 
 from schemas.edl import TransitionIntent
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,96 @@ def find_ffmpeg_executable() -> str:
         "FFmpeg executable 'ffmpeg' not found in system PATH. "
         "Please ensure FFmpeg is installed and accessible."
     )
+
+
+_HW_ACCEL_DETECTED: Optional[bool] = None
+
+
+def detect_nvenc_support(force_probe: bool = False) -> bool:
+    """Detect whether FFmpeg has working h264_nvenc hardware encoding on this system.
+
+    Checks user preferences in settings.HW_ACCEL:
+    - 'cpu': Forces software encoding (returns False).
+    - 'nvenc': Forces NVENC hardware encoding (returns True).
+    - 'auto': Probes FFmpeg with a 1-frame test using h264_nvenc.
+
+    Returns:
+        True if h264_nvenc is available and functional, False otherwise.
+    """
+    global _HW_ACCEL_DETECTED
+    if not force_probe and _HW_ACCEL_DETECTED is not None:
+        return _HW_ACCEL_DETECTED
+
+    hw_pref = getattr(settings, "HW_ACCEL", "auto").strip().lower()
+    if hw_pref == "cpu":
+        _HW_ACCEL_DETECTED = False
+        return False
+    if hw_pref == "nvenc":
+        _HW_ACCEL_DETECTED = True
+        return True
+
+    # Auto-detection probe
+    try:
+        ffmpeg_bin = find_ffmpeg_executable()
+        probe_cmd = [
+            ffmpeg_bin,
+            "-hide_banner",
+            "-loglevel", "error",
+            "-f", "lavfi",
+            "-i", "color=c=black:s=64x64:d=0.04",
+            "-c:v", "h264_nvenc",
+            "-pix_fmt", "yuv420p",
+            "-f", "null",
+            "-",
+        ]
+        res = subprocess.run(
+            probe_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=4.0,
+        )
+        _HW_ACCEL_DETECTED = (res.returncode == 0)
+        if _HW_ACCEL_DETECTED:
+            logger.info("Hardware acceleration detected: NVIDIA NVENC (h264_nvenc) enabled for video rendering.")
+        else:
+            logger.debug("Hardware acceleration probe returned non-zero. Falling back to libx264.")
+    except Exception as exc:
+        logger.debug("Hardware acceleration detection failed: %s. Using libx264.", exc)
+        _HW_ACCEL_DETECTED = False
+
+    return _HW_ACCEL_DETECTED
+
+
+def get_video_encoder_args(
+    crf: int = 20,
+    preset: str = "fast",
+    use_gpu: Optional[bool] = None,
+) -> list[str]:
+    """Return video encoder arguments, using h264_nvenc if GPU acceleration is enabled/detected.
+
+    Args:
+        crf: Quality target / constant rate factor (e.g. 18-23).
+        preset: Encoder speed/quality preset (e.g. 'fast', 'medium').
+        use_gpu: If True, force GPU encoding. If False, force CPU (libx264).
+                 If None, automatically detect NVENC support.
+
+    Returns:
+        List of FFmpeg command arguments for video encoding.
+    """
+    enable_nvenc = use_gpu if use_gpu is not None else detect_nvenc_support()
+    if enable_nvenc:
+        nvenc_preset = "p4" if preset in ("fast", "faster", "veryfast") else "p5"
+        return [
+            "-c:v", "h264_nvenc",
+            "-pix_fmt", "yuv420p",
+            "-preset", nvenc_preset,
+            "-cq", str(crf),
+        ]
+    return [
+        "-c:v", "libx264",
+        "-preset", preset,
+        "-crf", str(crf),
+    ]
 
 
 def map_transition_intent(transition: Union[str, TransitionIntent]) -> str:
@@ -209,6 +300,7 @@ def build_trim_command(
     target_fps: float = 30.0,
     playback_speed: float = 1.0,
     has_audio: bool = True,
+    use_gpu: Optional[bool] = None,
 ) -> list[str]:
     """Build an FFmpeg CLI command to trim, normalize, and speed-adjust a single video clip.
 
@@ -225,6 +317,7 @@ def build_trim_command(
         target_fps: Normalized frame rate (default: 30.0).
         playback_speed: Playback speed multiplier (default: 1.0; e.g. 2.0 for 2x fast-forward).
         has_audio: Whether the source clip has an audio track to preserve and speed-scale.
+        use_gpu: Optional GPU hardware encoding override.
 
     Returns:
         List of FFmpeg command arguments.
@@ -285,13 +378,8 @@ def build_trim_command(
         str_clip,
         "-vf",
         vf_filter,
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        "23",
     ]
+    cmd.extend(get_video_encoder_args(crf=23, preset="fast", use_gpu=use_gpu))
 
     if has_audio:
         if abs(playback_speed - 1.0) > 1e-4:
@@ -420,6 +508,7 @@ def build_xfade_chain(
     durations: Sequence[float],
     output_path: Union[str, Path],
     transition_duration: float = 1.0,
+    use_gpu: Optional[bool] = None,
 ) -> list[str]:
     """Build a complete FFmpeg command chaining video xfade and audio acrossfade filters.
 
@@ -429,6 +518,7 @@ def build_xfade_chain(
         durations: List of durations corresponding to each clip.
         output_path: Path for rendered output video.
         transition_duration: Overlap duration in seconds for each transition (default: 1.0).
+        use_gpu: Optional GPU hardware encoding override.
 
     Returns:
         List of FFmpeg command arguments.
@@ -492,12 +582,9 @@ def build_xfade_chain(
         final_v_label,
         "-map",
         final_a_label,
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        "23",
+    ])
+    cmd.extend(get_video_encoder_args(crf=23, preset="fast", use_gpu=use_gpu))
+    cmd.extend([
         "-c:a",
         "aac",
         "-b:a",
@@ -596,6 +683,7 @@ def build_caption_burn_command(
     srt_path: Union[str, Path],
     output_path: Union[str, Path],
     font_size: int = 16,
+    use_gpu: Optional[bool] = None,
 ) -> list[str]:
     """Build an FFmpeg command to burn-in captions from an SRT file into video frames.
 
@@ -606,6 +694,7 @@ def build_caption_burn_command(
         srt_path: SubRip Subtitle (.srt) file path.
         output_path: Destination path for the captioned video.
         font_size: Subtitle font size in points (default: 16).
+        use_gpu: Optional GPU hardware encoding override.
 
     Returns:
         List of FFmpeg command arguments.
@@ -626,29 +715,24 @@ def build_caption_burn_command(
     vf_arg = f"subtitles='{escaped_srt}':force_style='FontSize={font_size}'"
 
     ffmpeg_bin = find_ffmpeg_executable()
-    return [
+    cmd = [
         ffmpeg_bin,
         "-y",
         "-i",
         str_video,
         "-vf",
         vf_arg,
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        "23",
-        "-c:a",
-        "copy",
-        str_out,
     ]
+    cmd.extend(get_video_encoder_args(crf=23, preset="fast", use_gpu=use_gpu))
+    cmd.extend(["-c:a", "copy", str_out])
+    return cmd
 
 
 def build_drawtext_overlay_command(
     video_path: Union[str, Path],
     overlay_entries: list[dict[str, Any]],
     output_path: Union[str, Path],
+    use_gpu: Optional[bool] = None,
 ) -> list[str]:
     """Build an FFmpeg command to burn multiple overlay text entries using drawtext filters.
 
@@ -659,6 +743,7 @@ def build_drawtext_overlay_command(
         video_path: Source video file path.
         overlay_entries: List of overlay text configuration dicts.
         output_path: Destination path for the output video.
+        use_gpu: Optional GPU hardware encoding override.
 
     Returns:
         List of FFmpeg command arguments.
@@ -776,23 +861,17 @@ def build_drawtext_overlay_command(
     vf_arg = ",".join(drawtext_filters)
 
     ffmpeg_bin = find_ffmpeg_executable()
-    return [
+    cmd = [
         ffmpeg_bin,
         "-y",
         "-i",
         str_video,
         "-vf",
         vf_arg,
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        "23",
-        "-c:a",
-        "copy",
-        str_out,
     ]
+    cmd.extend(get_video_encoder_args(crf=23, preset="fast", use_gpu=use_gpu))
+    cmd.extend(["-c:a", "copy", str_out])
+    return cmd
 
 
 def execute_ffmpeg_command(

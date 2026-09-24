@@ -58,6 +58,7 @@ OUTPUT_DIR = _resolve_dir(os.getenv("OUTPUT_DIR"), _resolve_default_output_dir()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")
+HW_ACCEL = os.getenv("HW_ACCEL", "auto").strip().lower()
 
 try:
     MAX_LOOP_ITERATIONS = int(os.getenv("MAX_LOOP_ITERATIONS", "10"))
@@ -86,6 +87,13 @@ SUPPORTED_LOG_LEVELS: frozenset[str] = frozenset({
     "WARNING",
     "ERROR",
     "CRITICAL",
+})
+
+# Recognized / Supported Hardware Acceleration Options
+SUPPORTED_HW_ACCEL: frozenset[str] = frozenset({
+    "auto",
+    "nvenc",
+    "cpu",
 })
 
 # Recognized / Supported Whisper Models
@@ -174,6 +182,12 @@ def validate_settings(
             f"WHISPER_MODEL must be one of {sorted(SUPPORTED_WHISPER_MODELS)}, got {WHISPER_MODEL!r}"
         )
 
+    # Check hardware acceleration mode
+    if not isinstance(HW_ACCEL, str) or HW_ACCEL.strip().lower() not in SUPPORTED_HW_ACCEL:
+        errors.append(
+            f"HW_ACCEL must be one of {sorted(SUPPORTED_HW_ACCEL)}, got {HW_ACCEL!r}"
+        )
+
     # Check log level
     if not isinstance(LOG_LEVEL, str) or LOG_LEVEL.strip().upper() not in SUPPORTED_LOG_LEVELS:
         errors.append(
@@ -202,7 +216,7 @@ def reload_settings(env_file: Optional[Union[str, Path]] = None) -> None:
         env_file: Optional path to a .env file to load before reloading.
     """
     global MEDIA_INPUT_DIR, STAGING_DIR, OUTPUT_DIR
-    global GEMINI_API_KEY, GEMINI_MODEL, WHISPER_MODEL, MAX_LOOP_ITERATIONS
+    global GEMINI_API_KEY, GEMINI_MODEL, WHISPER_MODEL, MAX_LOOP_ITERATIONS, HW_ACCEL
     global APP_NAME, WEB_HOST, WEB_PORT, DEFAULT_USER_ID
     global LOG_LEVEL, LOG_JSON, LOG_FILE
 
@@ -216,6 +230,7 @@ def reload_settings(env_file: Optional[Union[str, Path]] = None) -> None:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")
+    HW_ACCEL = os.getenv("HW_ACCEL", "auto").strip().lower()
 
     try:
         MAX_LOOP_ITERATIONS = int(os.getenv("MAX_LOOP_ITERATIONS", "5"))

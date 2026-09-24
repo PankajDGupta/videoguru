@@ -372,11 +372,17 @@ def parse_arguments() -> argparse.Namespace:
         help="Output structured logs in JSON format (SPEC-028).",
     )
     parser.add_argument(
-        "--log-file",
-        type=str,
+        "--gpu",
+        dest="gpu",
+        action="store_true",
         default=None,
-        metavar="PATH",
-        help="Optional file path to persist structured logs.",
+        help="Enable GPU hardware encoding (NVENC) for fast video rendering (default: auto).",
+    )
+    parser.add_argument(
+        "--no-gpu",
+        dest="gpu",
+        action="store_false",
+        help="Disable GPU hardware encoding and force CPU software rendering (libx264).",
     )
     return parser.parse_args()
 
@@ -391,6 +397,10 @@ def main() -> None:
             pass
 
     args = parse_arguments()
+    if args.gpu is True:
+        settings.HW_ACCEL = "nvenc"
+    elif args.gpu is False:
+        settings.HW_ACCEL = "cpu"
 
     # Configure structured logging (SPEC-028)
     from services.observability import configure_logging

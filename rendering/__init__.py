@@ -10,9 +10,11 @@ from rendering.ffmpeg_builder import (
     build_trim_command,
     build_xfade_chain,
     calculate_xfade_offsets,
+    detect_nvenc_support,
     escape_subtitles_path,
     execute_ffmpeg_command,
     find_ffmpeg_executable,
+    get_video_encoder_args,
     map_transition_intent,
 )
 
@@ -26,8 +28,10 @@ __all__ = [
     "build_trim_command",
     "build_xfade_chain",
     "calculate_xfade_offsets",
+    "detect_nvenc_support",
     "escape_subtitles_path",
     "execute_ffmpeg_command",
     "find_ffmpeg_executable",
+    "get_video_encoder_args",
     "map_transition_intent",
 ]
