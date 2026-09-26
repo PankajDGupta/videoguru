@@ -215,6 +215,9 @@ def burn_subtitles_to_video(
     srt_path: Union[str, Path],
     output_path: Union[str, Path],
     font_size: int = 16,
+    margin_v: Optional[int] = None,
+    target_resolution: Optional[str] = None,
+    is_shorts: bool = False,
 ) -> str:
     """Burn subtitles from an SRT file into video frames using FFmpeg's subtitles filter.
 
@@ -223,6 +226,9 @@ def burn_subtitles_to_video(
         srt_path: Path to the SubRip Subtitle (.srt) file.
         output_path: Destination path for the captioned output video.
         font_size: Subtitle font size in points (default: 16).
+        margin_v: Optional vertical margin in pixels from the bottom edge.
+        target_resolution: Optional video resolution ('1080x1920' or '1920x1080').
+        is_shorts: Whether the target video is a YouTube Short.
 
     Returns:
         Absolute string path to the generated captioned video file.
@@ -254,11 +260,19 @@ def burn_subtitles_to_video(
 
     out_file.parent.mkdir(parents=True, exist_ok=True)
 
+    cmd_kwargs: dict[str, Any] = {"font_size": font_size}
+    if margin_v is not None:
+        cmd_kwargs["margin_v"] = margin_v
+    if target_resolution is not None:
+        cmd_kwargs["target_resolution"] = target_resolution
+    if is_shorts:
+        cmd_kwargs["is_shorts"] = is_shorts
+
     cmd = build_caption_burn_command(
         video_path=vid_file,
         srt_path=srt_file,
         output_path=out_file,
-        font_size=font_size,
+        **cmd_kwargs,
     )
 
     logger.info("Burning subtitles '%s' into '%s' -> '%s'", srt_file.name, vid_file.name, out_file.name)
@@ -275,12 +289,16 @@ def generate_captions(
     tool_context: Optional[Any] = None,
     offline: bool = False,
     font_size: int = 16,
+    margin_v: Optional[int] = None,
+    target_resolution: Optional[str] = None,
+    is_shorts: bool = False,
 ) -> dict[str, str]:
     """ADK Tool: Generate Whisper captions for a video and burn them in with FFmpeg.
 
     Orchestrates transcription, .srt creation, subtitle burn-in rendering, and updates
     session state (`tool_context.state["srt_path"]` and
-    `tool_context.state["captioned_video_path"]`).
+    `tool_context.state["captioned_video_path"]`). For YouTube Shorts (1080x1920), elevates
+    vertical margin (MarginV) to ensure captions remain clearly visible above YouTube's mobile UI.
 
     Args:
         video_path: Source video file path.
@@ -290,6 +308,9 @@ def generate_captions(
         tool_context: Optional ADK ToolContext for session state persistence.
         offline: If True, runs in offline/mock transcription mode.
         font_size: Subtitle font size in points (default: 16).
+        margin_v: Optional vertical margin in pixels from the bottom edge.
+        target_resolution: Optional target resolution string (e.g. '1080x1920').
+        is_shorts: Whether the target video is a YouTube Short.
 
     Returns:
         Dictionary containing 'srt_path' and 'captioned_video_path'.
@@ -321,6 +342,13 @@ def generate_captions(
 
     resolved_model = model_name or settings.WHISPER_MODEL or "medium"
 
+    state = tool_context.state if tool_context is not None and hasattr(tool_context, "state") else {}
+    effective_resolution = target_resolution or state.get("target_resolution")
+    video_type = str(state.get("video_type", "")).strip().lower()
+    effective_is_shorts = is_shorts or (video_type in ("shorts", "vertical")) or (
+        effective_resolution is not None and str(effective_resolution).strip().lower() == "1080x1920"
+    )
+
     try:
         # 3. Transcribe audio
         transcription = transcribe_audio_whisper(
@@ -334,11 +362,19 @@ def generate_captions(
         write_srt_file(segments=segments, output_path=resolved_srt_path)
 
         # 5. Burn subtitles into video
+        burn_kwargs: dict[str, Any] = {"font_size": font_size}
+        if margin_v is not None:
+            burn_kwargs["margin_v"] = margin_v
+        if effective_resolution is not None:
+            burn_kwargs["target_resolution"] = effective_resolution
+        if effective_is_shorts:
+            burn_kwargs["is_shorts"] = effective_is_shorts
+
         burn_subtitles_to_video(
             video_path=vid_path,
             srt_path=resolved_srt_path,
             output_path=resolved_video_path,
-            font_size=font_size,
+            **burn_kwargs,
         )
     except Exception as exc:
         logger.warning(

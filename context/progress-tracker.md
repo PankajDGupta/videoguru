@@ -118,6 +118,8 @@
 | Spec | Title | Status | Assignee | Notes |
 |------|-------|--------|----------|-------|
 | SPEC-031 | Overlay Text Agent (YouTube Shorts Engagement) | ✅ | Antigravity | Implemented `OverlayTextAgent` in `agents/overlay_text.py`, Pydantic models in `schemas/overlay_text.py` (`OverlayTextStyle`, `OverlayTextEntry`, `OverlayTextPlan`, `TextPosition`, `YOUTUBE_SHORTS_COLORS`), FFmpeg drawtext command builder `build_drawtext_overlay_command()` in `rendering/ffmpeg_builder.py`, tools in `tools/overlay_text_tools.py` (`generate_overlay_text_plan`, `generate_overlay_texts_with_gemini`, `burn_overlay_text`, `_compute_cut_timeline_offsets`), integrated Step 1b into `EnhancementRenderingAgent.execute_rendering_pipeline()`, 44 unit tests passing in `tests/test_overlay_text.py` (672 total tests passing) |
+| SPEC-032 | YouTube Shorts Format & Safe-Zone Text Burning (1080x1920) | ✅ | Antigravity | Implemented 1080x1920 resolution support in `config/settings.py` (`VIDEO_TYPE`, `TARGET_RESOLUTION`), dynamic resolution in `tools/transition_renderer.py`, Shorts UI safe-zone text burning in `rendering/ffmpeg_builder.py` (elevated `MarginV=220`, `FontSize=24pt`, safe drawtext Y bounds), responsive font scaling in `tools/overlay_text_tools.py` (46px hook, 36px scene), `EnhancementRenderingAgent` pipeline propagation, auto-detection in `record_theme`, CLI `--shorts` & `--resolution` flags in `main.py`, 19 unit & integration tests passing in `tests/test_youtube_shorts.py` (691 total tests passing) |
+| SPEC-033 | Scene-Aware Text Overlays & Subtitle Controls | ✅ | Antigravity | Disabled Whisper captions by default (`ENABLE_CAPTIONS=False`) to prevent unwanted ambient speech transcription, added opt-in `--captions` / `--subtitles` CLI flags; enabled scene-aware engaging text overlays (`ENABLE_OVERLAY_TEXT=True`) with Gemini vision cut rationale and clip metadata awareness; hardened Windows `subprocess.run` with UTF-8 decoding and escaped FFmpeg filtergraph commas; 12 unit tests passing in `tests/test_scene_text_overlays.py` (713 total tests passing) |
 
 ---
 
@@ -125,8 +127,8 @@
 
 | Metric | Count |
 |--------|-------|
-| **Total Specs** | 31 |
-| **Completed** | 31 |
+| **Total Specs** | 33 |
+| **Completed** | 33 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
 | **Not Started** | 0 |

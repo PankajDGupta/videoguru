@@ -97,14 +97,23 @@ class EnhancementRenderingAgent(Agent):
         music_path: Optional[Union[str, Path]] = None,
         output_path: Optional[Union[str, Path]] = None,
         transition_duration: float = 1.0,
+        target_resolution: Optional[str] = None,
+        enable_captions: Optional[bool] = None,
+        enable_overlay_text: Optional[bool] = None,
     ) -> dict[str, Any]:
         """Execute the end-to-end rendering pipeline deterministically.
+
+        Supports standard landscape (1920x1080) and YouTube Shorts vertical (1080x1920)
+        with mobile UI safe-zone text burning.
 
         Args:
             state: Session state dictionary containing 'edl' and 'clip_manifest'.
             music_path: Optional path to background music track.
             output_path: Optional explicit final destination path.
             transition_duration: Overlap seconds for xfade transitions.
+            target_resolution: Optional target resolution ('1080x1920' or '1920x1080').
+            enable_captions: Optional boolean to enable/disable Whisper subtitles (default: False/settings.ENABLE_CAPTIONS).
+            enable_overlay_text: Optional boolean to enable/disable stylish overlay text (default: True).
 
         Returns:
             Dictionary containing final paths and render metadata:
@@ -119,6 +128,30 @@ class EnhancementRenderingAgent(Agent):
             }
         """
         tool_ctx = SimpleToolContext(state)
+
+        # Resolve target resolution (landscape 1920x1080 vs YouTube Shorts 1080x1920)
+        effective_resolution = target_resolution
+        if not effective_resolution:
+            effective_resolution = state.get("target_resolution")
+        if not effective_resolution:
+            v_type = str(state.get("video_type", "")).strip().lower()
+            if v_type in ("shorts", "vertical"):
+                effective_resolution = "1080x1920"
+        if not effective_resolution:
+            effective_resolution = getattr(settings, "TARGET_RESOLUTION", "1920x1080")
+
+        is_shorts_mode = (str(effective_resolution).strip().lower() == "1080x1920") or (
+            str(state.get("video_type", "")).strip().lower() in ("shorts", "vertical")
+        )
+        state["target_resolution"] = effective_resolution
+        if is_shorts_mode:
+            state["video_type"] = "shorts"
+
+        logger.info(
+            "EnhancementRenderingAgent: Video format mode: %s (Resolution: %s)",
+            "YouTube Shorts (9:16)" if is_shorts_mode else "Standard Landscape (16:9)",
+            effective_resolution,
+        )
 
         # 1. Resolve EDL and Clip Manifest
         edl = get_edl_from_state(state)
@@ -183,6 +216,7 @@ class EnhancementRenderingAgent(Agent):
             transition_duration=transition_duration,
             tool_context=tool_ctx,
             staging_dir=staging_dir,
+            target_resolution=effective_resolution,
         )
         logger.info("EnhancementRenderingAgent: Step 1 (Transitions) completed -> %s", transition_path)
 
@@ -193,41 +227,59 @@ class EnhancementRenderingAgent(Agent):
         overlay_input = transition_path
         has_overlay_text = False
 
-        try:
-            # Check for pre-generated overlay texts in state, or generate new ones
-            overlay_texts_raw = state.get("overlay_texts")
-            if overlay_texts_raw and isinstance(overlay_texts_raw, list) and len(overlay_texts_raw) > 0:
-                overlay_plan = OverlayTextPlan.from_list(overlay_texts_raw, theme=state.get("theme", ""))
-            else:
-                # Generate overlay texts from theme and EDL
-                theme = state.get("theme", "")
-                if theme and edl:
-                    if self.offline:
-                        overlay_plan = _generate_mock_overlay_texts(edl, theme, transition_duration)
-                    else:
-                        overlay_plan = generate_overlay_texts_with_gemini(edl, theme, transition_duration)
-                    state["overlay_texts"] = overlay_plan.to_dict_list()
-                else:
-                    overlay_plan = None
+        effective_enable_overlay = enable_overlay_text
+        if effective_enable_overlay is None:
+            effective_enable_overlay = state.get("enable_overlay_text", getattr(settings, "ENABLE_OVERLAY_TEXT", True))
 
-            if overlay_plan and len(overlay_plan) > 0:
-                overlay_output = staging_dir / "step1b_overlayed.mp4"
-                overlay_result = burn_overlay_text(
-                    video_path=transition_path,
-                    overlay_plan=overlay_plan,
-                    output_path=overlay_output,
+        if not effective_enable_overlay:
+            logger.info("EnhancementRenderingAgent: Overlay text disabled (enable_overlay_text=False). Skipping overlay step.")
+        else:
+            try:
+                # Check for pre-generated overlay texts in state, or generate new ones
+                overlay_texts_raw = state.get("overlay_texts")
+                if overlay_texts_raw and isinstance(overlay_texts_raw, list) and len(overlay_texts_raw) > 0:
+                    overlay_plan = OverlayTextPlan.from_list(overlay_texts_raw, theme=state.get("theme", ""))
+                else:
+                    # Generate overlay texts from theme, EDL, and clip manifest
+                    theme = state.get("theme", "")
+                    if theme and edl:
+                        if self.offline:
+                            overlay_plan = _generate_mock_overlay_texts(
+                                edl, theme, transition_duration,
+                                target_resolution=effective_resolution,
+                                is_shorts=is_shorts_mode,
+                            )
+                        else:
+                            overlay_plan = generate_overlay_texts_with_gemini(
+                                edl, theme, transition_duration,
+                                target_resolution=effective_resolution,
+                                is_shorts=is_shorts_mode,
+                                clip_manifest=manifest,
+                            )
+                        state["overlay_texts"] = overlay_plan.to_dict_list()
+                    else:
+                        overlay_plan = None
+
+                if overlay_plan and len(overlay_plan) > 0:
+                    overlay_output = staging_dir / "step1b_overlayed.mp4"
+                    overlay_result = burn_overlay_text(
+                        video_path=transition_path,
+                        overlay_plan=overlay_plan,
+                        output_path=overlay_output,
+                        target_resolution=effective_resolution,
+                        is_shorts=is_shorts_mode,
+                    )
+                    overlay_input = overlay_result
+                    has_overlay_text = True
+                    logger.info("EnhancementRenderingAgent: Step 1b (Overlay Text) completed -> %s", overlay_result)
+                else:
+                    logger.info("EnhancementRenderingAgent: No overlay text plan. Skipping overlay step.")
+            except Exception as exc:
+                logger.warning(
+                    "EnhancementRenderingAgent: Overlay text burn-in failed (%s). Continuing without overlay text.",
+                    exc,
                 )
-                overlay_input = overlay_result
-                has_overlay_text = True
-                logger.info("EnhancementRenderingAgent: Step 1b (Overlay Text) completed -> %s", overlay_result)
-            else:
-                logger.info("EnhancementRenderingAgent: No overlay text plan. Skipping overlay step.")
-        except Exception as exc:
-            logger.warning(
-                "EnhancementRenderingAgent: Overlay text burn-in failed (%s). Continuing without overlay text.",
-                exc,
-            )
-            overlay_input = transition_path
+                overlay_input = transition_path
 
         log_render_progress("overlay_text", progress_percent=45.0, output_path=str(overlay_input))
 
@@ -280,33 +332,44 @@ class EnhancementRenderingAgent(Agent):
 
         log_render_progress("ducking", progress_percent=66.0, output_path=str(ducked_path), has_ducking=has_ducking)
 
-        # 4. Step 3: Whisper Subtitle Generation & Burn-in
+        # 4. Step 3: Subtitle Generation & Burn-in (Opt-in via enable_captions or settings.ENABLE_CAPTIONS)
         captioned_path = ducked_path
         srt_path: Optional[str] = None
         has_captions = False
 
-        caption_output = staging_dir / "step3_captioned.mp4"
-        srt_output = staging_dir / "subtitles.srt"
+        effective_enable_captions = enable_captions
+        if effective_enable_captions is None:
+            effective_enable_captions = state.get("enable_captions", getattr(settings, "ENABLE_CAPTIONS", False))
 
-        try:
-            logger.info("EnhancementRenderingAgent: Transcribing and burning subtitles...")
-            cap_result = generate_captions(
-                video_path=ducked_path,
-                output_srt_path=srt_output,
-                output_video_path=caption_output,
-                tool_context=tool_ctx,
-                offline=self.offline,
+        if not effective_enable_captions:
+            logger.info(
+                "EnhancementRenderingAgent: Subtitles disabled (enable_captions=False). Skipping Whisper caption generation."
             )
-            captioned_path = cap_result.get("captioned_video_path", ducked_path)
-            srt_path = cap_result.get("srt_path")
-            has_captions = True
-            logger.info("EnhancementRenderingAgent: Step 3 (Captions) completed -> %s", captioned_path)
-        except Exception as exc:
-            logger.warning(
-                "EnhancementRenderingAgent: Captioning failed or skipped (%s). Continuing with uncaptioned video.",
-                exc,
-            )
-            captioned_path = ducked_path
+        else:
+            caption_output = staging_dir / "step3_captioned.mp4"
+            srt_output = staging_dir / "subtitles.srt"
+
+            try:
+                logger.info("EnhancementRenderingAgent: Transcribing and burning subtitles...")
+                cap_result = generate_captions(
+                    video_path=ducked_path,
+                    output_srt_path=srt_output,
+                    output_video_path=caption_output,
+                    tool_context=tool_ctx,
+                    offline=self.offline,
+                    target_resolution=effective_resolution,
+                    is_shorts=is_shorts_mode,
+                )
+                captioned_path = cap_result.get("captioned_video_path", ducked_path)
+                srt_path = cap_result.get("srt_path")
+                has_captions = True
+                logger.info("EnhancementRenderingAgent: Step 3 (Captions) completed -> %s", captioned_path)
+            except Exception as exc:
+                logger.warning(
+                    "EnhancementRenderingAgent: Captioning failed or skipped (%s). Continuing with uncaptioned video.",
+                    exc,
+                )
+                captioned_path = ducked_path
 
         log_render_progress("captions", progress_percent=90.0, output_path=str(captioned_path), has_captions=has_captions)
 
@@ -316,7 +379,8 @@ class EnhancementRenderingAgent(Agent):
         else:
             settings.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
             ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-            final_target = (settings.OUTPUT_DIR / f"final_vlog_{ts}.mp4").resolve()
+            prefix = "final_shorts" if is_shorts_mode else "final_vlog"
+            final_target = (settings.OUTPUT_DIR / f"{prefix}_{ts}.mp4").resolve()
 
         final_target.parent.mkdir(parents=True, exist_ok=True)
 

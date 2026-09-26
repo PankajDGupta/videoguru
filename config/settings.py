@@ -60,6 +60,27 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")
 HW_ACCEL = os.getenv("HW_ACCEL", "auto").strip().lower()
 
+# Video Type & Resolution Configuration (SPEC-032)
+VIDEO_TYPE = os.getenv("VIDEO_TYPE", "landscape").strip().lower()
+SUPPORTED_VIDEO_TYPES: frozenset[str] = frozenset({
+    "landscape",
+    "shorts",
+    "vertical",
+})
+
+RESOLUTION_MAP: dict[str, str] = {
+    "landscape": "1920x1080",
+    "shorts": "1080x1920",
+    "vertical": "1080x1920",
+}
+
+TARGET_RESOLUTION = os.getenv("TARGET_RESOLUTION", RESOLUTION_MAP.get(VIDEO_TYPE, "1920x1080")).strip().lower()
+
+# Subtitle and Overlay Text Configuration (SPEC-033)
+# Subtitles (speech-to-text via Whisper) are disabled by default as creators prefer clean video with stylish overlays
+ENABLE_CAPTIONS = os.getenv("ENABLE_CAPTIONS", "false").strip().lower() in {"true", "1", "yes", "on"}
+ENABLE_OVERLAY_TEXT = os.getenv("ENABLE_OVERLAY_TEXT", "true").strip().lower() in {"true", "1", "yes", "on"}
+
 try:
     MAX_LOOP_ITERATIONS = int(os.getenv("MAX_LOOP_ITERATIONS", "10"))
 except (ValueError, TypeError):
@@ -188,6 +209,12 @@ def validate_settings(
             f"HW_ACCEL must be one of {sorted(SUPPORTED_HW_ACCEL)}, got {HW_ACCEL!r}"
         )
 
+    # Check video type
+    if not isinstance(VIDEO_TYPE, str) or VIDEO_TYPE.strip().lower() not in SUPPORTED_VIDEO_TYPES:
+        errors.append(
+            f"VIDEO_TYPE must be one of {sorted(SUPPORTED_VIDEO_TYPES)}, got {VIDEO_TYPE!r}"
+        )
+
     # Check log level
     if not isinstance(LOG_LEVEL, str) or LOG_LEVEL.strip().upper() not in SUPPORTED_LOG_LEVELS:
         errors.append(
@@ -217,6 +244,8 @@ def reload_settings(env_file: Optional[Union[str, Path]] = None) -> None:
     """
     global MEDIA_INPUT_DIR, STAGING_DIR, OUTPUT_DIR
     global GEMINI_API_KEY, GEMINI_MODEL, WHISPER_MODEL, MAX_LOOP_ITERATIONS, HW_ACCEL
+    global VIDEO_TYPE, TARGET_RESOLUTION
+    global ENABLE_CAPTIONS, ENABLE_OVERLAY_TEXT
     global APP_NAME, WEB_HOST, WEB_PORT, DEFAULT_USER_ID
     global LOG_LEVEL, LOG_JSON, LOG_FILE
 
@@ -231,6 +260,12 @@ def reload_settings(env_file: Optional[Union[str, Path]] = None) -> None:
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")
     HW_ACCEL = os.getenv("HW_ACCEL", "auto").strip().lower()
+
+    VIDEO_TYPE = os.getenv("VIDEO_TYPE", "landscape").strip().lower()
+    TARGET_RESOLUTION = os.getenv("TARGET_RESOLUTION", RESOLUTION_MAP.get(VIDEO_TYPE, "1920x1080")).strip().lower()
+
+    ENABLE_CAPTIONS = os.getenv("ENABLE_CAPTIONS", "false").strip().lower() in {"true", "1", "yes", "on"}
+    ENABLE_OVERLAY_TEXT = os.getenv("ENABLE_OVERLAY_TEXT", "true").strip().lower() in {"true", "1", "yes", "on"}
 
     try:
         MAX_LOOP_ITERATIONS = int(os.getenv("MAX_LOOP_ITERATIONS", "5"))

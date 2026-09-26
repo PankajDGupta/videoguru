@@ -124,6 +124,7 @@ class TestExecuteRenderingPipeline:
             "edl": sample_edl,
             "clip_manifest": sample_manifest,
             "music_path": str(music_file),
+            "enable_captions": True,
         }
 
         out_target = tmp_path / "custom_final.mp4"
@@ -167,6 +168,7 @@ class TestExecuteRenderingPipeline:
         state = {
             "edl": sample_edl,
             "clip_manifest": sample_manifest,
+            "enable_captions": True,
         }
 
         result = agent.execute_rendering_pipeline(state)
@@ -174,6 +176,36 @@ class TestExecuteRenderingPipeline:
         assert result["has_ducking"] is False
         assert result["has_captions"] is True
         mock_ducking.assert_not_called()
+        assert Path(result["final_video_path"]).is_file()
+
+    @patch("agents.enhancement_rendering.render_with_transitions")
+    @patch("agents.enhancement_rendering.apply_audio_ducking")
+    @patch("agents.enhancement_rendering.generate_captions")
+    def test_pipeline_subtitles_disabled_by_default(
+        self,
+        mock_captions,
+        mock_ducking,
+        mock_transitions,
+        sample_edl,
+        sample_manifest,
+        tmp_path,
+    ):
+        mock_trans_video = tmp_path / "step1.mp4"
+        mock_trans_video.write_bytes(b"video step 1")
+
+        mock_transitions.return_value = str(mock_trans_video)
+
+        agent = EnhancementRenderingAgent(offline=True)
+        state = {
+            "edl": sample_edl,
+            "clip_manifest": sample_manifest,
+        }
+
+        result = agent.execute_rendering_pipeline(state)
+
+        # By default, subtitles should be disabled
+        assert result["has_captions"] is False
+        mock_captions.assert_not_called()
         assert Path(result["final_video_path"]).is_file()
 
     @patch("agents.enhancement_rendering.render_with_transitions")
@@ -206,6 +238,7 @@ class TestExecuteRenderingPipeline:
             "edl": sample_edl,
             "clip_manifest": sample_manifest,
             "music_path": str(music_file),
+            "enable_captions": True,
         }
 
         result = agent.execute_rendering_pipeline(state)

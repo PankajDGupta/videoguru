@@ -424,6 +424,15 @@ class TestBuildDrawtextOverlayCommand:
         # Percent should be doubled
         assert "%%" in vf_str
 
+    def test_text_with_comma_escaped(self):
+        entries = [
+            {"text": "Work-life balance, gym time!", "start_time": 0.0, "end_time": 3.0, "style": {}},
+        ]
+        with patch("rendering.ffmpeg_builder.find_ffmpeg_executable", return_value="ffmpeg"):
+            cmd = build_drawtext_overlay_command("in.mp4", entries, "out.mp4")
+        vf_str = cmd[cmd.index("-vf") + 1]
+        assert "\\," in vf_str
+
     def test_enable_timing(self):
         entries = [
             {"text": "Timed", "start_time": 2.5, "end_time": 6.0, "style": {}},
@@ -431,7 +440,7 @@ class TestBuildDrawtextOverlayCommand:
         with patch("rendering.ffmpeg_builder.find_ffmpeg_executable", return_value="ffmpeg"):
             cmd = build_drawtext_overlay_command("in.mp4", entries, "out.mp4")
         vf_str = cmd[cmd.index("-vf") + 1]
-        assert "gte(t,2.500)*lte(t,6.000)" in vf_str
+        assert r"gte(t\,2.500)*lte(t\,6.000)" in vf_str
 
 
 # ---------------------

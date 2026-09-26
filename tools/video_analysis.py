@@ -88,12 +88,19 @@ def create_upright_proxy(video_path: Path, output_dir: Path) -> Path:
         str(proxy_path),
     ]
     logger.info("Generating upright proxy for rotated clip '%s' -> '%s'...", video_path.name, proxy_path.name)
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    res = subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     if res.returncode != 0 or not proxy_path.exists():
         logger.warning(
             "Failed to create upright proxy for '%s': %s. Falling back to original clip.",
             video_path.name,
-            res.stderr,
+            res.stderr or "",
         )
         return video_path
     return proxy_path

@@ -115,13 +115,16 @@ def probe_video_file(file_path: Path | str) -> dict[str, Any]:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
     except OSError as err:
         raise RuntimeError(f"Failed to execute ffprobe: {err}") from err
 
+    stderr_text = result.stderr or ""
     if result.returncode != 0:
-        err_msg = result.stderr.strip() or f"ffprobe exited with code {result.returncode}"
+        err_msg = stderr_text.strip() or f"ffprobe exited with code {result.returncode}"
         raise RuntimeError(f"ffprobe failed on file '{target_path}': {err_msg}")
 
     try:

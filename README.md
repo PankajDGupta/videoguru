@@ -148,18 +148,107 @@ LOG_JSON=true
 
 ## 🚀 Usage Guide
 
-### 1. Run the Full Pipeline End-to-End (`--pipeline`)
-Execute the complete multi-agent workflow from intent capture to final `.mp4` render:
+VideoGuru supports two primary production formats:
+- **Normal Video (16:9 Landscape — `1920 × 1080`):** Standard long-form YouTube vlog format with 16:9 cinematic xfade transitions, full-width hook banners, and bottom-aligned captions.
+- **YouTube Shorts (9:16 Vertical — `1080 × 1920`):** Fast-paced vertical format optimized specifically for YouTube Shorts. Scales raw footage to `1080 × 1920` (preventing YouTube from rejecting the video as a normal horizontal upload) and enforces mobile UI safe-zone text burning:
+  - **Captions:** Elevated vertical margin (`MarginV=220`, `FontSize=24pt`) positioned safely above YouTube's channel handle, sound bar, and subscribe button.
+  - **Overlay Text:** Clamped within safe vertical zones (`top=h*0.14`, `upper_third=h*0.18`, `lower_third=h*0.62`), avoiding the top search controls and bottom 30% interactive UI dead zones.
+
+---
+
+### 1. Creating Normal Videos (16:9 Landscape — `1920 × 1080`)
+
+Normal mode is the default setting when no format flags are specified.
+
+#### End-to-End Autonomous Pipeline
+Run all pipeline phases (Greeter → Ingestion → Loop → Review → Render):
 
 ```bash
-# Live mode with Gemini API
+# Live multi-agent pipeline (requires GEMINI_API_KEY in .env)
 python main.py --pipeline --theme "Tokyo Travel Highlights" --input-dir input_videos
 
-# Offline / Deterministic mode (no API key required)
-python main.py --pipeline --theme "Nature Hike" --input-dir input_videos --offline --auto-approve
+# Offline / Deterministic pipeline (no API key required, with auto-approval)
+python main.py --pipeline --theme "Nature Hike Vlog" --input-dir input_videos --offline --auto-approve
+
+# With background music (auto-ducked under dialogue)
+python main.py --pipeline --theme "Road Trip" --input-dir input_videos --music-file input_videos/music.mp3
 ```
 
-### 2. Launch the ADK Web UI (`--web`)
+#### Direct Phase V Render (from existing EDL)
+Render an approved Edit Decision List directly into a broadcast `1920 × 1080` `.mp4`:
+
+```bash
+# Render EDL with transitions, audio ducking, and Whisper captions
+python main.py --render-edl work_dir/edl.json --music-file input_videos/music.mp3
+
+# Specify custom output path
+python main.py --render-edl work_dir/edl.json --output-file output_video/final_vlog_custom.mp4
+```
+
+---
+
+### 2. Creating YouTube Shorts (9:16 Vertical — `1080 × 1920`)
+
+When creating YouTube Shorts, VideoGuru normalizes footage to `1080 × 1920` and applies Shorts-safe text positioning so interactive mobile elements do not obscure your titles and captions.
+
+#### Method A: Using the `--shorts` Flag (Recommended)
+Add `--shorts` to any pipeline or rendering command:
+
+```bash
+# Live multi-agent YouTube Shorts pipeline
+python main.py --pipeline --shorts --theme "Quick Fitness Motivation" --input-dir input_videos
+
+# Offline / Deterministic Shorts pipeline
+python main.py --pipeline --shorts --theme "3 Morning Habits" --input-dir input_videos --offline --auto-approve
+
+# Shorts pipeline with background music
+python main.py --pipeline --shorts --theme "Workout Motivation" --input-dir input_videos --music-file input_videos/music.mp3
+```
+
+#### Method B: Automatic Keyword Intent Detection
+VideoGuru automatically detects Shorts format if your prompt or `--theme` mentions `short`, `shorts`, `reel`, `reels`, or `vertical`:
+
+```bash
+# Automatically detects YouTube Shorts intent from theme keywords
+python main.py --pipeline --theme "Quick 45-second YouTube Short of my gym workout" --input-dir input_videos
+python main.py --pipeline --theme "Vertical travel reel highlights" --input-dir input_videos
+```
+
+#### Method C: Explicit Resolution Flag (`--resolution`)
+Explicitly specify the resolution:
+
+```bash
+python main.py --pipeline --resolution 1080x1920 --theme "Tokyo Street Food" --input-dir input_videos
+```
+
+#### Direct Phase V Shorts Render (from existing EDL)
+Render an existing EDL into a `1080 × 1920` YouTube Short with safe-zone text burning:
+
+```bash
+# Render EDL in Shorts format
+python main.py --render-edl work_dir/edl.json --shorts --music-file input_videos/music.mp3
+
+# Specify custom output path
+python main.py --render-edl work_dir/edl.json --shorts --output-file output_video/my_first_short.mp4
+```
+
+---
+
+### 3. Format Comparison & Safe-Zone Reference
+
+| Attribute | Normal Video (Landscape) | YouTube Shorts (Vertical) |
+| :--- | :--- | :--- |
+| **Target Dimensions** | `1920 × 1080` (16:9) | **`1080 × 1920` (9:16)** |
+| **Pipeline Trigger** | Default (no flag required) | `--shorts`, `--resolution 1080x1920`, or theme keyword |
+| **Default Output Path** | `output_video/final_vlog_{ts}.mp4` | `output_video/final_shorts_{ts}.mp4` |
+| **Burned Subtitles** | Standard bottom margin (`MarginV=10-20`, `16pt`) | Elevated safe zone (`MarginV=220`, `24pt`, `Alignment=2`) |
+| **Overlay Hook Text** | `56px` Impact font, upper-third (`y=h*0.15`) | `46px` Impact font, safe zone (`y=h*0.18`), max 1080px width |
+| **Overlay Scene Text** | `42px` font, upper-third / center | `36px` font, clamped above bottom 30% UI (`y <= h*0.65`) |
+| **YouTube Handling** | Standard horizontal video player | Native full-screen vertical Shorts player |
+
+---
+
+### 4. Launch the ADK Web UI (`--web`)
 Interact with VideoGuru through Google ADK's built-in web interface:
 
 ```bash
@@ -167,11 +256,13 @@ python main.py --web --host 127.0.0.1 --port 8000
 ```
 Open `http://127.0.0.1:8000` in your browser.
 
-### 3. Modular CLI Commands
+---
+
+### 5. Modular CLI Commands
 
 | Workflow Step | Command | Description |
 | :--- | :--- | :--- |
-| **Inspect Configuration** | `python main.py --info` | Displays project settings, directory mappings, and agent readiness. |
+| **Inspect Configuration** | `python main.py --info` | Displays project settings, video type, resolution, and agent readiness. |
 | **Scan Directory** | `python main.py --scan-dir input_videos` | Discovers media clips (`.mp4`, `.mov`, `.avi`, `.mkv`) and file sizes. |
 | **Extract Metadata** | `python main.py --extract-metadata input_videos/clip1.mp4` | Runs `ffprobe` to extract resolution, FPS, duration, and codecs. |
 | **Build Clip Manifest** | `python main.py --ingest-dir input_videos` | Ingests media folder and outputs structured `ClipManifestEntry` array. |
@@ -186,9 +277,40 @@ Open `http://127.0.0.1:8000` in your browser.
 | **Voice Review** | `python main.py --live-review work_dir/edl.json --voice-file feedback.wav` | Gemini Live API bidirectional streaming voice review. |
 | **Audio Ducking** | `python main.py --duck-audio staging/video.mp4 --music-file input_videos/music.mp3` | Sidechain compression audio ducking under dialogue. |
 | **Whisper Captions** | `python main.py --generate-captions staging/video.mp4` | Generates `.srt` with Whisper AI and burns subtitles into video. |
-| **Render EDL** | `python main.py --render-edl work_dir/edl.json --music-file input_videos/music.mp3` | Full Phase V rendering (transitions, ducking, subtitles). |
+| **Render Normal EDL** | `python main.py --render-edl work_dir/edl.json --music-file input_videos/music.mp3` | Full Phase V rendering to 16:9 (`1920 × 1080`). |
+| **Render Shorts EDL** | `python main.py --render-edl work_dir/edl.json --shorts --music-file input_videos/music.mp3` | Full Phase V rendering to 9:16 (`1080 × 1920`) with safe-zone text. |
 
-### 4. Logging & Observability Options
+---
+
+### 6. Text Overlays vs. Subtitle Controls
+
+VideoGuru distinguishes between **stylish, scene-specific text overlays** and **spoken-dialogue subtitles**:
+
+- **Scene Text Overlays (`ENABLE_OVERLAY_TEXT=True` by default):**
+  - Powered by Gemini 2.0 Flash analyzing the theme, cut rationale, and clip visuals.
+  - Cut 1: High-energy, colorful HOOK title (with emojis).
+  - Subsequent cuts: 3-8 word punchy scene titles / key highlights burned into safe zones.
+  - Disable with `--no-overlay-text` if you prefer raw footage without titles.
+
+- **Speech-to-Text Subtitles (`ENABLE_CAPTIONS=False` by default):**
+  - Subtitles transcribe audio dialogue using Whisper AI. Disabled by default so that ambient noise, music, or foreign language speech is **not** transcribed and burned into your video.
+  - To enable dialogue subtitles, add `--captions` or `--subtitles`.
+  - Explicitly force disable with `--no-captions`.
+
+```bash
+# Default: Stylish scene text overlays ON, speech subtitles OFF
+python main.py --pipeline --theme "Fitness Transformation" --shorts --input-dir input_videos
+
+# Opt-in to Whisper speech subtitles alongside scene overlays
+python main.py --pipeline --theme "Tech Talk" --captions --input-dir input_videos
+
+# Clean video without any text overlays or subtitles
+python main.py --pipeline --theme "B-roll Montage" --no-overlay-text --input-dir input_videos
+```
+
+---
+
+### 7. Logging & Observability Options
 VideoGuru features structured JSON logging with standardized event loggers:
 
 ```bash
@@ -206,7 +328,7 @@ python main.py --pipeline --theme "Vlog" --log-file staging/pipeline.log
 
 ## 🧪 Testing & Verification
 
-Run the comprehensive automated test suite (560+ tests):
+Run the comprehensive automated test suite (690+ tests):
 
 ```bash
 # Run all unit and integration tests
@@ -214,6 +336,10 @@ pytest
 
 # Run tests quietly with summary
 pytest -q
+
+# Run YouTube Shorts and overlay text tests
+pytest tests/test_youtube_shorts.py -v
+pytest tests/test_overlay_text.py -v
 
 # Run specific subsystem tests
 pytest tests/test_observability.py -v

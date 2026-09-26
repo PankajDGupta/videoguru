@@ -60,6 +60,7 @@ def print_project_info() -> None:
     print(f"Gemini Model:        {settings.GEMINI_MODEL}")
     print(f"Whisper Model:       {settings.WHISPER_MODEL}")
     print(f"Max Loop Iterations: {settings.MAX_LOOP_ITERATIONS}")
+    print(f"Video Type / Res:    {settings.VIDEO_TYPE} ({settings.TARGET_RESOLUTION})")
     print(f"Web Host & Port:     {settings.WEB_HOST}:{settings.WEB_PORT}")
     print(f"Gemini API Key Set:  {'Yes' if bool(os.getenv('GEMINI_API_KEY')) else 'No (set GEMINI_API_KEY to enable live LLM)'}")
     print(f"Log Level & Format:  {settings.LOG_LEVEL} (JSON: {'Enabled' if settings.LOG_JSON else 'Disabled'})")
@@ -313,6 +314,35 @@ def parse_arguments() -> argparse.Namespace:
         default=None,
         metavar="OUT_PATH",
         help="Explicit destination path for rendered output video.",
+    )
+    parser.add_argument(
+        "--shorts",
+        action="store_true",
+        help="Produce video in YouTube Shorts format (1080x1920 vertical 9:16) with safe-zone text burning (SPEC-032).",
+    )
+    parser.add_argument(
+        "--resolution",
+        type=str,
+        default=None,
+        metavar="WIDTHxHEIGHT",
+        help="Target video resolution (e.g. '1080x1920' for Shorts, '1920x1080' for landscape).",
+    )
+    parser.add_argument(
+        "--captions",
+        "--subtitles",
+        action="store_true",
+        default=False,
+        help="Enable Whisper speech-to-text subtitle transcription and burning into the video (SPEC-033, default: disabled).",
+    )
+    parser.add_argument(
+        "--no-captions",
+        action="store_true",
+        help="Explicitly disable Whisper speech-to-text subtitles (default: disabled).",
+    )
+    parser.add_argument(
+        "--no-overlay-text",
+        action="store_true",
+        help="Disable scene-aware stylish text overlays (SPEC-033).",
     )
 
     # Phase VII — Root Workflow Pipeline Arguments (SPEC-025)
@@ -1109,6 +1139,17 @@ def main() -> None:
                 "edl": edl,
                 "clip_manifest": [c.model_dump() for c in manifest],
             }
+            if args.shorts or (args.resolution and args.resolution.strip().lower() == "1080x1920"):
+                state["video_type"] = "shorts"
+                state["target_resolution"] = "1080x1920"
+            if args.captions:
+                state["enable_captions"] = True
+            elif args.no_captions:
+                state["enable_captions"] = False
+
+            if args.no_overlay_text:
+                state["enable_overlay_text"] = False
+
             if args.music_file:
                 state["music_path"] = args.music_file
 
@@ -1125,11 +1166,15 @@ def main() -> None:
                 state=state,
                 music_path=args.music_file,
                 output_path=args.output_file,
+                target_resolution=state.get("target_resolution"),
+                enable_captions=state.get("enable_captions"),
+                enable_overlay_text=state.get("enable_overlay_text"),
             )
 
             print("🎬 Final Render Completed Successfully!")
             print(f"- Final Video:    {render_res['final_video_path']}")
             print(f"- Transitions:    {render_res['transition_video_path']}")
+            print(f"- Overlay Text:   {'Applied' if render_res.get('has_overlay_text') else 'None (skipped)'}")
             print(f"- Audio Ducking:  {'Applied' if render_res['has_ducking'] else 'None (skipped)'}")
             print(f"- Captions:       {'Burned-in' if render_res['has_captions'] else 'None (skipped)'}")
             if render_res.get("srt_path"):
@@ -1160,6 +1205,20 @@ def main() -> None:
             "media_dir": str(media_dir),
             "auto_approve": args.auto_approve,
         }
+        if args.shorts or (args.resolution and args.resolution.strip().lower() == "1080x1920"):
+            initial_state["video_type"] = "shorts"
+            initial_state["target_resolution"] = "1080x1920"
+        elif args.resolution:
+            initial_state["target_resolution"] = args.resolution
+
+        if args.captions:
+            initial_state["enable_captions"] = True
+        elif args.no_captions:
+            initial_state["enable_captions"] = False
+
+        if args.no_overlay_text:
+            initial_state["enable_overlay_text"] = False
+
         if args.music_file:
             initial_state["music_path"] = args.music_file
 

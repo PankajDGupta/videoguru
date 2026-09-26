@@ -95,12 +95,21 @@ class OverlayTextAgent(Agent):
                 return
 
             theme = state.get("theme", "Engaging YouTube Shorts highlights")
+            eff_res = state.get("target_resolution")
+            is_shorts = (str(state.get("video_type", "")).strip().lower() in ("shorts", "vertical")) or (
+                eff_res is not None and str(eff_res).strip().lower() == "1080x1920"
+            )
+            manifest = state.get("clip_manifest")
 
             if self.offline:
                 # Offline deterministic mode
-                plan = _generate_mock_overlay_texts(edl, theme)
+                plan = _generate_mock_overlay_texts(
+                    edl, theme, target_resolution=eff_res, is_shorts=is_shorts
+                )
             else:
-                plan = generate_overlay_texts_with_gemini(edl, theme)
+                plan = generate_overlay_texts_with_gemini(
+                    edl, theme, target_resolution=eff_res, is_shorts=is_shorts, clip_manifest=manifest
+                )
 
             # Build summary report
             lines = [f"🌟 Generated {len(plan)} overlay texts for: \"{theme[:60]}\""]

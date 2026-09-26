@@ -167,13 +167,15 @@ def render_with_transitions(
     transition_duration: float = 1.0,
     tool_context: Optional[Any] = None,
     staging_dir: Optional[Union[str, Path]] = None,
+    target_resolution: Optional[str] = None,
 ) -> str:
-    """ADK Tool: Render a compiled video from an EDL with xfade transitions and audio crossfades (SPEC-017).
+    """ADK Tool: Render a compiled video from an EDL with xfade transitions and audio crossfades (SPEC-017 / SPEC-032).
 
     Resolves EDL cuts and Clip Manifest metadata from arguments or tool_context.state.
-    Pre-trims and normalizes each segment into a temporary staging clip (1920x1080 @ 30fps)
-    using FFmpeg scale, pad, and fps filters. For multi-cut EDLs, chains video xfade and audio
-    acrossfade filters dynamically. For single-cut EDLs, directly trims and normalizes to the output.
+    Pre-trims and normalizes each segment into a temporary staging clip (e.g. 1920x1080 for standard,
+    or 1080x1920 for YouTube Shorts @ 30fps) using FFmpeg scale, pad, and fps filters.
+    For multi-cut EDLs, chains video xfade and audio acrossfade filters dynamically.
+    For single-cut EDLs, directly trims and normalizes to the output.
 
     Args:
         edl: Explicit EditDecisionList instance, sequence of cut dicts, or file path.
@@ -182,6 +184,7 @@ def render_with_transitions(
         transition_duration: Crossfade overlap duration in seconds (default: 1.0).
         tool_context: Optional ADK ToolContext providing access to session.state.
         staging_dir: Optional custom directory for intermediate trimmed segment clips.
+        target_resolution: Optional output resolution ('1920x1080' or '1080x1920' for YouTube Shorts).
 
     Returns:
         Absolute filesystem path string to the rendered video.
@@ -191,6 +194,17 @@ def render_with_transitions(
         RuntimeError: If FFmpeg execution fails.
     """
     state = tool_context.state if tool_context is not None and hasattr(tool_context, "state") else {}
+
+    # Resolve target resolution (landscape vs YouTube Shorts 1080x1920)
+    effective_resolution = target_resolution
+    if not effective_resolution:
+        effective_resolution = state.get("target_resolution")
+    if not effective_resolution:
+        video_type = str(state.get("video_type", "")).strip().lower()
+        if video_type in ("shorts", "vertical"):
+            effective_resolution = "1080x1920"
+    if not effective_resolution:
+        effective_resolution = getattr(settings, "TARGET_RESOLUTION", "1920x1080")
 
     # 1. Resolve and validate EDL & Manifest
     resolved_edl = _resolve_edl(edl, state)
@@ -223,11 +237,12 @@ def render_with_transitions(
         clip = manifest_map[cut.file_reference]
         cut_speed = getattr(cut, "playback_speed", 1.0)
         logger.info(
-            "Rendering single cut EDL directly: clip=%s, start=%.3f, end=%.3f, speed=%.2fx -> %s",
+            "Rendering single cut EDL directly: clip=%s, start=%.3f, end=%.3f, speed=%.2fx, res=%s -> %s",
             cut.file_reference,
             cut.start_trim,
             cut.end_trim,
             cut_speed,
+            effective_resolution,
             target_output,
         )
         trim_cmd = build_trim_command(
@@ -235,7 +250,7 @@ def render_with_transitions(
             start=cut.start_trim,
             end=cut.end_trim,
             output_path=target_output,
-            target_resolution="1920x1080",
+            target_resolution=effective_resolution,
             target_fps=30.0,
             playback_speed=cut_speed,
             has_audio=clip.has_audio,
@@ -281,7 +296,7 @@ def render_with_transitions(
             start=cut.start_trim,
             end=cut.end_trim,
             output_path=staged_clip,
-            target_resolution="1920x1080",
+            target_resolution=effective_resolution,
             target_fps=30.0,
             playback_speed=cut_speed,
             has_audio=clip.has_audio,

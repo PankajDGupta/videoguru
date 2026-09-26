@@ -152,6 +152,8 @@ def detect_nvenc_support(force_probe: bool = False) -> bool:
             probe_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            encoding="utf-8",
+            errors="replace",
             timeout=4.0,
         )
         _HW_ACCEL_DETECTED = (res.returncode == 0)
@@ -684,10 +686,15 @@ def build_caption_burn_command(
     output_path: Union[str, Path],
     font_size: int = 16,
     use_gpu: Optional[bool] = None,
+    margin_v: Optional[int] = None,
+    target_resolution: Optional[str] = None,
+    is_shorts: bool = False,
 ) -> list[str]:
     """Build an FFmpeg command to burn-in captions from an SRT file into video frames.
 
     Handles cross-platform path escaping including Windows drive letter colons and backslashes.
+    When rendering for YouTube Shorts (1080x1920), elevates vertical margin (MarginV) and
+    scales font size so captions sit in the safe zone above YouTube's mobile interface.
 
     Args:
         video_path: Source video file path.
@@ -695,6 +702,9 @@ def build_caption_burn_command(
         output_path: Destination path for the captioned video.
         font_size: Subtitle font size in points (default: 16).
         use_gpu: Optional GPU hardware encoding override.
+        margin_v: Optional vertical margin in pixels from the bottom edge.
+        target_resolution: Resolution string (e.g. '1080x1920' or '1920x1080').
+        is_shorts: Whether the target format is a vertical YouTube Short.
 
     Returns:
         List of FFmpeg command arguments.
@@ -711,8 +721,27 @@ def build_caption_burn_command(
     if font_size <= 0:
         raise ValueError(f"font_size must be a positive integer, got {font_size}")
 
+    is_shorts_mode = is_shorts or (
+        target_resolution is not None and str(target_resolution).strip().lower() == "1080x1920"
+    )
+
+    # For YouTube Shorts (1080x1920), optimize font size and vertical margin for mobile UI safe zone
+    effective_font_size = font_size
+    effective_margin_v = margin_v
+
+    if is_shorts_mode:
+        if effective_font_size == 16:
+            effective_font_size = 24  # Clear, readable size for vertical mobile screens
+        if effective_margin_v is None:
+            effective_margin_v = 220  # Lift above YouTube Shorts bottom metadata and sound bar
+
     escaped_srt = escape_subtitles_path(srt_path)
-    vf_arg = f"subtitles='{escaped_srt}':force_style='FontSize={font_size}'"
+    style_parts = [f"FontSize={effective_font_size}"]
+    if effective_margin_v is not None:
+        style_parts.append(f"MarginV={effective_margin_v}")
+        style_parts.append("Alignment=2")
+
+    vf_arg = f"subtitles='{escaped_srt}':force_style='{','.join(style_parts)}'"
 
     ffmpeg_bin = find_ffmpeg_executable()
     cmd = [
@@ -733,17 +762,22 @@ def build_drawtext_overlay_command(
     overlay_entries: list[dict[str, Any]],
     output_path: Union[str, Path],
     use_gpu: Optional[bool] = None,
+    target_resolution: Optional[str] = None,
+    is_shorts: bool = False,
 ) -> list[str]:
     """Build an FFmpeg command to burn multiple overlay text entries using drawtext filters.
 
     Each overlay entry is a dict with keys: text, start_time, end_time, and style (dict).
-    Handles Windows path escaping for FFmpeg filter strings.
+    Handles Windows path escaping for FFmpeg filter strings and adapts vertical placement
+    for YouTube Shorts safe zones.
 
     Args:
         video_path: Source video file path.
         overlay_entries: List of overlay text configuration dicts.
         output_path: Destination path for the output video.
         use_gpu: Optional GPU hardware encoding override.
+        target_resolution: Target video resolution string (e.g. '1080x1920').
+        is_shorts: Whether the target format is a YouTube Short.
 
     Returns:
         List of FFmpeg command arguments.
@@ -760,14 +794,28 @@ def build_drawtext_overlay_command(
     if not overlay_entries:
         raise ValueError("overlay_entries list cannot be empty.")
 
-    # Position mapping to FFmpeg y-expressions
-    position_y_map = {
-        "top": "h*0.08",
-        "upper_third": "h*0.15",
-        "center": "(h-text_h)/2",
-        "lower_third": "h*0.72",
-        "bottom": "h*0.88",
-    }
+    is_shorts_mode = is_shorts or (
+        target_resolution is not None and str(target_resolution).strip().lower() == "1080x1920"
+    )
+
+    if is_shorts_mode:
+        # YouTube Shorts (1080x1920) safe zones: avoid top 12% and bottom 32% (channel info/sound bar)
+        position_y_map = {
+            "top": "h*0.14",
+            "upper_third": "h*0.18",
+            "center": "(h-text_h)/2",
+            "lower_third": "h*0.62",
+            "bottom": "h*0.65",
+        }
+    else:
+        # Standard landscape (1920x1080)
+        position_y_map = {
+            "top": "h*0.08",
+            "upper_third": "h*0.15",
+            "center": "(h-text_h)/2",
+            "lower_third": "h*0.72",
+            "bottom": "h*0.88",
+        }
 
     drawtext_filters: list[str] = []
 
@@ -808,12 +856,18 @@ def build_drawtext_overlay_command(
         cleaned_text = re.sub(r"\s+", " ", cleaned_text).strip()
         text_to_render = cleaned_text if cleaned_text else text.strip()
 
-        # Escape text for FFmpeg drawtext (single quotes, colons, backslashes)
-        escaped_text = text_to_render.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:").replace("%", "%%")
+        # Escape text for FFmpeg drawtext (single quotes, colons, backslashes, percent, and commas)
+        escaped_text = (
+            text_to_render.replace("\\", "\\\\")
+            .replace("'", "\\'")
+            .replace(":", "\\:")
+            .replace("%", "%%")
+            .replace(",", r"\,")
+        )
 
         # Build drawtext filter string.
-        # NOTE: Do NOT use between(t,start,end) because the comma separates filters in FFmpeg's filtergraph!
-        # Instead, use gte(t,start)*lte(t,end) which is comma-free and safe for chained -vf filters.
+        # NOTE: When chaining filters in -vf or -filter_complex, literal commas separate filters.
+        # Any commas inside filter option values (including enable expressions) MUST be escaped with '\,'.
         dt_parts = [
             f"drawtext=text='{escaped_text}'",
             f"fontsize={font_size}",
@@ -825,7 +879,7 @@ def build_drawtext_overlay_command(
             f"shadowy={shadow_y}",
             f"x=(w-text_w)/2",
             f"y={y_expr}",
-            f"enable='gte(t,{start_t:.3f})*lte(t,{end_t:.3f})'",
+            f"enable='gte(t\\,{start_t:.3f})*lte(t\\,{end_t:.3f})'",
         ]
 
         # Try to resolve fontfile on Windows to avoid Fontconfig errors
@@ -914,6 +968,8 @@ def execute_ffmpeg_command(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             check=False,
         )
@@ -924,10 +980,13 @@ def execute_ffmpeg_command(
         logger.error("FFmpeg command execution failed with OS error: %s", exc)
         raise RuntimeError(f"FFmpeg execution failed: {exc}") from exc
 
+    stderr_text = result.stderr or ""
+    stdout_text = result.stdout or ""
+
     if check and result.returncode != 0:
         error_msg = (
-            result.stderr.strip()
-            or result.stdout.strip()
+            stderr_text.strip()
+            or stdout_text.strip()
             or f"Process exited with return code {result.returncode}"
         )
         logger.error("FFmpeg command failed with code %d: %s", result.returncode, error_msg)

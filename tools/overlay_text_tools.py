@@ -32,9 +32,13 @@ logger = logging.getLogger(__name__)
 # Default overlay text display duration per cut (seconds)
 DEFAULT_OVERLAY_DURATION = 3.5
 
-# Hook text gets a bigger font
+# Hook text gets a bigger font (landscape 1920x1080)
 HOOK_FONT_SIZE = 56
 SCENE_FONT_SIZE = 42
+
+# Shorts-optimized font sizes (1080x1920 canvas width)
+HOOK_FONT_SIZE_SHORTS = 46
+SCENE_FONT_SIZE_SHORTS = 36
 
 
 def _compute_cut_timeline_offsets(
@@ -75,9 +79,15 @@ def _generate_mock_overlay_texts(
     edl: EditDecisionList,
     theme: str,
     transition_duration: float = 1.0,
+    target_resolution: Optional[str] = None,
+    is_shorts: bool = False,
 ) -> OverlayTextPlan:
     """Generate deterministic mock overlay texts for testing or offline mode."""
     offsets = _compute_cut_timeline_offsets(edl, transition_duration)
+
+    is_shorts_mode = is_shorts or (
+        target_resolution is not None and str(target_resolution).strip().lower() == "1080x1920"
+    )
 
     # Extract theme keywords for mock text
     theme_short = theme[:60] if theme else "Highlights"
@@ -104,7 +114,10 @@ def _generate_mock_overlay_texts(
 
         is_hook = idx == 0
         color = YOUTUBE_SHORTS_COLORS[idx % len(YOUTUBE_SHORTS_COLORS)]
-        font_size = HOOK_FONT_SIZE if is_hook else SCENE_FONT_SIZE
+        if is_shorts_mode:
+            font_size = HOOK_FONT_SIZE_SHORTS if is_hook else SCENE_FONT_SIZE_SHORTS
+        else:
+            font_size = HOOK_FONT_SIZE if is_hook else SCENE_FONT_SIZE
 
         style = OverlayTextStyle(
             font_family="Impact",
@@ -137,55 +150,83 @@ def generate_overlay_texts_with_gemini(
     edl: EditDecisionList,
     theme: str,
     transition_duration: float = 1.0,
+    target_resolution: Optional[str] = None,
+    is_shorts: bool = False,
+    clip_manifest: Optional[Sequence[Any]] = None,
 ) -> OverlayTextPlan:
-    """Use Gemini to generate engaging overlay text for each cut based on the theme.
+    """Use Gemini to generate stylish, engaging overlay text for each scene cut based on the theme and video.
 
     Args:
         edl: The finalized Edit Decision List.
         theme: Video theme/intent description.
         transition_duration: Transition duration for timeline offset computation.
+        target_resolution: Target video resolution string (e.g. '1080x1920' or '1920x1080').
+        is_shorts: Whether the output is a vertical YouTube Short.
+        clip_manifest: Optional sequence of ingested clip metadata for enriched scene context.
 
     Returns:
         OverlayTextPlan with one entry per cut.
     """
+    is_shorts_mode = is_shorts or (
+        target_resolution is not None and str(target_resolution).strip().lower() == "1080x1920"
+    )
+
     try:
         from google import genai
     except ImportError:
         logger.warning("google-genai not available. Falling back to mock overlay texts.")
-        return _generate_mock_overlay_texts(edl, theme, transition_duration)
+        return _generate_mock_overlay_texts(
+            edl, theme, transition_duration, target_resolution=target_resolution, is_shorts=is_shorts_mode
+        )
 
     api_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
     if not api_key:
         logger.warning("No Gemini API key available. Using mock overlay texts.")
-        return _generate_mock_overlay_texts(edl, theme, transition_duration)
+        return _generate_mock_overlay_texts(
+            edl, theme, transition_duration, target_resolution=target_resolution, is_shorts=is_shorts_mode
+        )
 
     offsets = _compute_cut_timeline_offsets(edl, transition_duration)
+
+    manifest_map: dict[str, Any] = {}
+    if clip_manifest:
+        for c in clip_manifest:
+            cid = getattr(c, "clip_id", None) or (c.get("clip_id") if isinstance(c, dict) else None)
+            if cid:
+                manifest_map[cid] = c
 
     # Build the prompt describing each cut
     cuts_description = []
     for idx, entry in enumerate(edl.entries):
         cut_start, cut_end = offsets[idx]
+        clip_info = manifest_map.get(entry.file_reference)
+        clip_name = (
+            getattr(clip_info, "file_name", "")
+            if clip_info
+            else (clip_info.get("file_name", "") if isinstance(clip_info, dict) else "")
+        )
+        name_str = f" [clip: {clip_name}]" if clip_name else ""
         cuts_description.append(
-            f"Cut {idx + 1}: Duration {entry.duration:.1f}s, "
-            f"Timeline {cut_start:.1f}s-{cut_end:.1f}s, "
-            f"Scene: {entry.scene_rationale}"
+            f"Scene {idx + 1}{name_str}: Duration {entry.duration:.1f}s (Timeline {cut_start:.1f}s-{cut_end:.1f}s), "
+            f"Scene Content & Action: {entry.scene_rationale}"
         )
 
     prompt = (
-        f"You are a YouTube Shorts viral content strategist. Generate short, punchy overlay text "
-        f"for each scene cut in a video.\n\n"
-        f"VIDEO THEME: {theme}\n\n"
-        f"CUTS:\n" + "\n".join(cuts_description) + "\n\n"
-        f"RULES:\n"
-        f"- Cut 1 MUST be a strong HOOK that makes viewers stop scrolling (use emojis)\n"
-        f"- Each text should be 3-8 words MAX\n"
-        f"- Use relevant emojis for engagement\n"
-        f"- Match the energy and theme of each scene\n"
-        f"- Text should feel authentic, not clickbaity\n"
-        f"- Use a mix of motivation, humor, and emotion\n\n"
-        f"Return ONLY a JSON array where each element has: "
-        f'{{"cut_index": 0, "text": "your overlay text here", "is_hook": true/false}}\n'
-        f"Return {len(edl.entries)} entries, one per cut."
+        f"You are a top viral YouTube Shorts and Reels creative director and content strategist.\n"
+        f"Analyze the creator's video theme and each scene breakdown to generate engaging, stylish, "
+        f"and context-relevant text overlays for each scene in the final video.\n\n"
+        f"VIDEO THEME / STORYLINE:\n{theme}\n\n"
+        f"SCENE BREAKDOWN (EDL CUTS):\n" + "\n".join(cuts_description) + "\n\n"
+        f"CRITICAL REQUIREMENTS:\n"
+        f"1. Scene 1 MUST be a high-impact, curiosity-driven HOOK overlay that stops users from scrolling.\n"
+        f"2. Each subsequent scene MUST have a punchy, stylish text overlay (3 to 7 words) describing the action "
+        f"   or mood of that specific scene while tying into the overall storyline.\n"
+        f"3. Do NOT output foreign speech transcript subtitles or literal speech translations. Output stylish, "
+        f"   editorial captions/titles for viewers (e.g. 'Morning workout grind 💪', 'Dropping son to class 🚗', 'Quick math tutoring session 📐').\n"
+        f"4. Add natural, relevant emojis to make the text pop visually on mobile.\n\n"
+        f"Return ONLY a valid JSON array where each element has:\n"
+        f'{{"cut_index": <int>, "text": "<stylish overlay text>", "is_hook": <true/false>}}\n'
+        f"Return exactly {len(edl.entries)} items (indexes 0 to {len(edl.entries) - 1})."
     )
 
     try:
@@ -227,7 +268,10 @@ def generate_overlay_texts_with_gemini(
 
             is_hook = item.get("is_hook", idx == 0)
             color = YOUTUBE_SHORTS_COLORS[idx % len(YOUTUBE_SHORTS_COLORS)]
-            font_size = HOOK_FONT_SIZE if is_hook else SCENE_FONT_SIZE
+            if is_shorts_mode:
+                font_size = HOOK_FONT_SIZE_SHORTS if is_hook else SCENE_FONT_SIZE_SHORTS
+            else:
+                font_size = HOOK_FONT_SIZE if is_hook else SCENE_FONT_SIZE
 
             style = OverlayTextStyle(
                 font_family="Impact",
@@ -255,7 +299,9 @@ def generate_overlay_texts_with_gemini(
 
         if not entries:
             logger.warning("Gemini returned no valid overlay texts. Using mock texts.")
-            return _generate_mock_overlay_texts(edl, theme, transition_duration)
+            return _generate_mock_overlay_texts(
+                edl, theme, transition_duration, target_resolution=target_resolution, is_shorts=is_shorts_mode
+            )
 
         logger.info("Generated %d overlay texts via Gemini for theme: %s", len(entries), theme[:50])
         return OverlayTextPlan(entries=entries, theme=theme)
@@ -265,7 +311,9 @@ def generate_overlay_texts_with_gemini(
             "Gemini overlay text generation failed (%s). Falling back to mock texts.",
             exc,
         )
-        return _generate_mock_overlay_texts(edl, theme, transition_duration)
+        return _generate_mock_overlay_texts(
+            edl, theme, transition_duration, target_resolution=target_resolution, is_shorts=is_shorts_mode
+        )
 
 
 def generate_overlay_text_plan(
@@ -273,6 +321,8 @@ def generate_overlay_text_plan(
     theme: Optional[str] = None,
     offline: bool = False,
     transition_duration: float = 1.0,
+    target_resolution: Optional[str] = None,
+    is_shorts: bool = False,
 ) -> str:
     """ADK Tool: Generate engaging overlay text for each cut based on the video theme.
 
@@ -284,6 +334,8 @@ def generate_overlay_text_plan(
         theme: Optional theme override.
         offline: If True, uses mock text generation.
         transition_duration: Duration of xfade transitions.
+        target_resolution: Optional video resolution string.
+        is_shorts: Whether rendering for YouTube Shorts.
 
     Returns:
         Summary string of generated overlay texts.
@@ -300,11 +352,22 @@ def generate_overlay_text_plan(
     if not resolved_theme:
         resolved_theme = "Engaging YouTube Shorts highlights"
 
+    # Resolve resolution & shorts mode
+    eff_res = target_resolution or state.get("target_resolution")
+    eff_shorts = is_shorts or (str(state.get("video_type", "")).strip().lower() in ("shorts", "vertical")) or (
+        eff_res is not None and str(eff_res).strip().lower() == "1080x1920"
+    )
+    manifest = state.get("clip_manifest")
+
     # Generate overlay texts
     if offline:
-        plan = _generate_mock_overlay_texts(edl, resolved_theme, transition_duration)
+        plan = _generate_mock_overlay_texts(
+            edl, resolved_theme, transition_duration, target_resolution=eff_res, is_shorts=eff_shorts
+        )
     else:
-        plan = generate_overlay_texts_with_gemini(edl, resolved_theme, transition_duration)
+        plan = generate_overlay_texts_with_gemini(
+            edl, resolved_theme, transition_duration, target_resolution=eff_res, is_shorts=eff_shorts, clip_manifest=manifest
+        )
 
     # Store in session state
     if tool_context and hasattr(tool_context, "state") and isinstance(state, dict):
@@ -328,6 +391,8 @@ def burn_overlay_text(
     video_path: Union[str, Path],
     overlay_plan: Union[OverlayTextPlan, list[dict[str, Any]]],
     output_path: Union[str, Path],
+    target_resolution: Optional[str] = None,
+    is_shorts: bool = False,
 ) -> str:
     """Burn overlay text entries into a video using FFmpeg drawtext filters.
 
@@ -335,6 +400,8 @@ def burn_overlay_text(
         video_path: Source video file path.
         overlay_plan: OverlayTextPlan or list of overlay entry dicts.
         output_path: Destination path for the output video.
+        target_resolution: Optional video resolution ('1080x1920' or '1920x1080').
+        is_shorts: Whether the target video is a YouTube Short.
 
     Returns:
         Absolute string path to the generated video with overlay text.
@@ -375,6 +442,8 @@ def burn_overlay_text(
         video_path=vid_file,
         overlay_entries=entries_dicts,
         output_path=out_file,
+        target_resolution=target_resolution,
+        is_shorts=is_shorts,
     )
 
     logger.info(

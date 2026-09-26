@@ -329,3 +329,44 @@
   - Graceful degradation: rendering continues without overlay text on failure.
   - Store overlay plan in `session.state["overlay_texts"]`.
 - Add unit tests in `tests/test_overlay_text.py`.
+
+### SPEC-032: YouTube Shorts Format & Safe-Zone Text Burning (1080x1920)
+
+- Add YouTube Shorts vertical aspect ratio (9:16) and 1080x1920 dimension support:
+  - Prevent YouTube algorithmic rejections of horizontal videos as Shorts.
+  - `VIDEO_TYPE` (`shorts` / `landscape`) and `TARGET_RESOLUTION` (`1080x1920` / `1920x1080`) in `config/settings.py`.
+- Dynamic video normalization in FFmpeg:
+  - `render_with_transitions` in `tools/transition_renderer.py` accepts and resolves `target_resolution`.
+  - Normalizes clips via `scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2`.
+- YouTube Shorts UI Safe-Zone Text Burning:
+  - `build_drawtext_overlay_command` in `rendering/ffmpeg_builder.py`:
+    - Shift vertical positions out of mobile UI dead zones (`top=h*0.14`, `upper_third=h*0.18`, `lower_third=h*0.62`, `bottom=h*0.65`).
+    - Avoid obscuration by YouTube Shorts channel metadata, sound bar, and action icons.
+  - `_generate_mock_overlay_texts` in `tools/overlay_text_tools.py`:
+    - Scale font sizes for 1080px canvas (`HOOK_FONT_SIZE_SHORTS=46`, `SCENE_FONT_SIZE_SHORTS=36`).
+  - `build_caption_burn_command` and `generate_captions` in `tools/whisper_captioning.py`:
+    - Elevate vertical subtitle margin (`MarginV=220`, `Alignment=2`) above YouTube Shorts bottom UI.
+    - Scale subtitle font size to 24pt for vertical mobile viewing.
+- Pipeline & CLI Integration:
+  - Pass `target_resolution` throughout `EnhancementRenderingAgent.execute_rendering_pipeline()`.
+  - Auto-name output with `final_shorts_{ts}.mp4` when rendering Shorts.
+  - Auto-detect Shorts format in `record_theme` from keywords (`short`, `shorts`, `reel`, `vertical`).
+  - Add `--shorts` and `--resolution` flags to CLI in `main.py`.
+- Comprehensive unit tests in `tests/test_youtube_shorts.py`.
+
+### SPEC-033: Scene-Aware Text Overlays & Subtitle Controls
+
+- Speech-to-text Subtitles Disabled by Default:
+  - Set `ENABLE_CAPTIONS = False` by default in `config/settings.py` and `.env.example`.
+  - Add CLI flags `--captions` / `--subtitles` and `--no-captions` in `main.py` for explicit opt-in subtitle transcription.
+  - Skip Whisper transcription in `EnhancementRenderingAgent.execute_rendering_pipeline()` when `enable_captions=False`, eliminating unwanted ambient speech subtitles and saving rendering time.
+- Scene-Aware Engaging Text Overlays:
+  - Maintain `ENABLE_OVERLAY_TEXT = True` by default with `--no-overlay-text` opt-out.
+  - In `tools/overlay_text_tools.py`, enhance Gemini prompt and schema pipeline to analyze the theme, cut rationales, and clip metadata descriptions to produce engaging, stylish scene titles and insights.
+  - Explicitly instruct Gemini not to transcribe background speech or foreign language chatter.
+- Windows Subprocess Encoding Hardening:
+  - Add `encoding="utf-8", errors="replace"` and null-safe `stderr`/`stdout` handling in `execute_ffmpeg_command` (`rendering/ffmpeg_builder.py`), `tools/clip_metadata.py`, and `tools/video_analysis.py` to eliminate Windows `cp1252` `UnicodeDecodeError`.
+- FFmpeg Filtergraph Comma Escaping:
+  - Properly escape commas with `\,` in `build_drawtext_overlay_command` for text content and timeline expressions (`gte(t\,{start})*lte(t\,{end})`) to prevent filtergraph parsing errors.
+- Unit and integration tests in `tests/test_scene_text_overlays.py`.
+

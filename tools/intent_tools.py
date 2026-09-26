@@ -30,6 +30,13 @@ def record_theme(theme: str, tool_context: ToolContext) -> str:
     # Store in session state under key 'theme'
     tool_context.state["theme"] = cleaned_theme
 
+    # Auto-detect YouTube Shorts format from theme keywords
+    lower_theme = cleaned_theme.lower()
+    if any(kw in lower_theme for kw in ["short", "shorts", "reel", "reels", "vertical", "tiktok"]):
+        tool_context.state["video_type"] = "shorts"
+        tool_context.state["target_resolution"] = "1080x1920"
+        logger.info("Detected YouTube Shorts intent from theme: video_type='shorts', target_resolution='1080x1920'")
+
     # Initiate handoff to Ingestion Agent
     tool_context.actions.transfer_to_agent = "ingestion_agent"
 
