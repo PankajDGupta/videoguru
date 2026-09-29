@@ -310,7 +310,34 @@ python main.py --pipeline --theme "B-roll Montage" --no-overlay-text --input-dir
 
 ---
 
-### 7. Logging & Observability Options
+### 7. Theme-Related Motion Graphics
+
+After the cuts and transitions are rendered, VideoGuru **analyzes the finished video with Gemini** and designs a few animated graphics that relate to its theme and to what is actually on screen. They are timed to the moment they describe and drawn natively by FFmpeg (no extra dependencies):
+
+| Graphic | What it looks like | Typical use |
+|---------|--------------------|-------------|
+| `kinetic_title` | Large centred headline rising in, with a whooshing accent underline | Chapter / key-moment title |
+| `lower_third` | Broadcast-style title strip + caption strip sliding in from the left | Place, subject or activity name |
+| `stat_callout` | Big number / keyword popping in with an overshoot, plus a label | "5 KM", "DAY 3" |
+| `corner_badge` | Small pill label sliding in from the right edge | "DAY 1", "LIVE" |
+| `progress_bar` | Thin bar filling across the video | Retention cue |
+
+- Gemini also picks a two-colour palette that suits the theme (e.g. warm orange for fitness, teal for travel).
+- Graphics stay inside the YouTube Shorts safe zones and never share a screen zone with the overlay text; overlapping graphics are removed and density is capped by video length.
+- Gemini is told not to invent facts: numbers are only used when visible on screen or stated in the theme. Without a `GEMINI_API_KEY` (or on any API error) a deterministic plan built from the theme and cut count is used, and if the step fails the render simply continues without graphics.
+- Enabled by default (`ENABLE_MOTION_GRAPHICS=true`); disable with `--no-motion-graphics`.
+
+```bash
+# Default: motion graphics ON
+python main.py --pipeline --theme "Morning run along the river" --shorts --input-dir input_videos
+
+# Skip motion graphics
+python main.py --pipeline --theme "B-roll Montage" --no-motion-graphics --input-dir input_videos
+```
+
+---
+
+### 8. Logging & Observability Options
 VideoGuru features structured JSON logging with standardized event loggers:
 
 ```bash
@@ -326,6 +353,33 @@ python main.py --pipeline --theme "Vlog" --log-file staging/pipeline.log
 
 ---
 
+## 🔌 MCP Server (use VideoGuru from Claude)
+
+`mcp_server.py` exposes VideoGuru as a stdio [MCP](https://modelcontextprotocol.io) server.
+
+**Register with Claude Code**
+
+```bash
+claude mcp add videoguru -- <repo>/.venv/Scripts/python.exe <repo>/mcp_server.py
+```
+
+**Claude Desktop** (`claude_desktop_config.json`) — see `.mcp.json.example`:
+
+```json
+{ "mcpServers": { "videoguru": { "command": "<repo>/.venv/Scripts/python.exe", "args": ["<repo>/mcp_server.py"], "cwd": "<repo>" } } }
+```
+
+| Tool | Purpose |
+|------|---------|
+| `start_pipeline` | Start the full edit as a background job (`theme`, `input_dir`, optional `music_file`, `shorts`, `resolution`, `captions`, `overlay_text`, `motion_graphics`, `offline`) → `job_id` |
+| `get_job_status` / `list_jobs` | Poll status, stage, and result paths (`final_video_path`, `otio_file_path`) |
+| `list_outputs` | List rendered videos in the output directory |
+| `scan_media_directory`, `get_clip_metadata`, `build_clip_manifest` | Inspect footage |
+| `apply_audio_ducking`, `generate_captions` | Standalone enhancement steps |
+| `download_from_google_photos` | Needs a one-time `python main.py --fetch-photos` OAuth login first |
+
+Try it locally with `npx @modelcontextprotocol/inspector .venv/Scripts/python.exe mcp_server.py`.
+
 ## 🧪 Testing & Verification
 
 Run the comprehensive automated test suite (690+ tests):
@@ -340,6 +394,7 @@ pytest -q
 # Run YouTube Shorts and overlay text tests
 pytest tests/test_youtube_shorts.py -v
 pytest tests/test_overlay_text.py -v
+pytest tests/test_motion_graphics.py -v
 
 # Run specific subsystem tests
 pytest tests/test_observability.py -v

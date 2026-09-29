@@ -19,7 +19,7 @@ import concurrent.futures
 import logging
 import os
 import uuid
-from typing import Any, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 from google.adk.agents import BaseAgent, SequentialAgent
 from google.adk.events import Event
@@ -118,10 +118,13 @@ class RootWorkflowAgent(SequentialAgent):
         session_service: Optional[InMemorySessionService] = None,
         auto_approve: bool = True,
         raise_on_error: bool = False,
+        on_stage: Optional[Callable[[str], None]] = None,
     ) -> dict[str, Any]:
         """Asynchronously execute the full 5-stage root workflow pipeline using ADK Runner.
 
         Args:
+            on_stage: Optional callback invoked with the author name whenever the active
+                pipeline stage changes (used by the MCP server for progress reporting).
             user_prompt: Initial creator prompt / theme description.
             user_id: User identifier for session isolation.
             session_id: Optional session ID (auto-generated if None).
@@ -204,6 +207,11 @@ class RootWorkflowAgent(SequentialAgent):
                         theme=initial_state.get("theme") if initial_state else None,
                     )
                     last_author = current_author
+                    if on_stage is not None:
+                        try:
+                            on_stage(current_author)
+                        except Exception:  # noqa: BLE001 - progress hooks must never break the run
+                            logger.debug("on_stage callback raised", exc_info=True)
 
                 event_data: dict[str, Any] = {
                     "author": event.author,

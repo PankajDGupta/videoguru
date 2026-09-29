@@ -928,6 +928,320 @@ def build_drawtext_overlay_command(
     return cmd
 
 
+# Vertical zones (fraction of frame height) per format for each motion graphic. Shorts zones stay inside the
+# safe area (below the top 12% channel bar, above the bottom 32% sound bar / action icons) and are chosen so
+# they never collide with the overlay-text position (`upper_third`, SPEC-031/032).
+_MOTION_ZONES_SHORTS: dict[str, float] = {
+    "progress_bar": 0.135,
+    "corner_badge": 0.27,
+    "kinetic_title": 0.38,
+    "stat_callout": 0.45,
+    "lower_third": 0.565,
+}
+_MOTION_ZONES_LANDSCAPE: dict[str, float] = {
+    "progress_bar": 0.965,
+    "corner_badge": 0.09,
+    "kinetic_title": 0.36,
+    "stat_callout": 0.42,
+    "lower_third": 0.70,
+}
+
+MAX_MOTION_GRAPHIC_ELEMENTS = 14
+# drawtext `text_h` as a fraction of fontsize, measured for the fonts the motion graphics use
+_IMPACT_TEXT_H = 0.80
+_ARIAL_BOLD_TEXT_H = 0.90
+_MOTION_ANIM_IN = 0.45
+_MOTION_ANIM_OUT = 0.40
+
+
+def _ffmpeg_color(hex_color: str, alpha: Optional[float] = None) -> str:
+    """Convert '#RRGGBB' into FFmpeg's '0xRRGGBB[@alpha]' colour syntax."""
+    digits = hex_color.strip().lstrip("#")
+    if not re.fullmatch(r"[0-9a-fA-F]{6}", digits):
+        digits = "FFFFFF"
+    base = f"0x{digits.upper()}"
+    return base if alpha is None else f"{base}@{alpha:.2f}"
+
+
+def _escape_motion_text(text: str) -> str:
+    """Escape copy for a single-quoted drawtext `text=` value used with `expansion=none`."""
+    return text.replace("\\", "").replace("'", "\u2019").replace(":", r"\:")
+
+
+def _drawtext_font_option(font_family: str) -> str:
+    """Return a drawtext font option, resolving a concrete font file on Windows to avoid Fontconfig errors."""
+    if os.name == "nt" and font_family:
+        win_fonts = {
+            "impact": "C:/Windows/Fonts/impact.ttf",
+            "arial": "C:/Windows/Fonts/arial.ttf",
+            "arial black": "C:/Windows/Fonts/ariblk.ttf",
+            "arial bold": "C:/Windows/Fonts/arialbd.ttf",
+            "segoe ui": "C:/Windows/Fonts/segoeui.ttf",
+        }
+        fpath = win_fonts.get(font_family.lower().strip())
+        if fpath and Path(fpath).exists():
+            return f"fontfile='{fpath.replace(':', chr(92) + ':')}'"
+    return f"font='{font_family}'"
+
+
+def _fit_font_size(text: str, base_size: float, max_width: float, char_width_ratio: float = 0.5) -> int:
+    """Shrink `base_size` so `text` (estimated at char_width_ratio * size per glyph) fits in max_width."""
+    glyphs = max(1, len(text))
+    fitted = min(base_size, max_width / (glyphs * char_width_ratio))
+    return max(24, int(fitted))
+
+
+def _slide_in(start: float, span: float) -> str:
+    """Expression that eases from 1 (offscreen) to 0 (resting) over `span` seconds starting at `start`."""
+    return f"pow(1-clip((t-{start:.3f})/{span:.3f},0,1),3)"
+
+
+def _slide_out(end: float, span: float) -> str:
+    """Expression that eases from 0 (resting) to 1 (offscreen) over the last `span` seconds before `end`."""
+    return f"pow(clip((t-({end:.3f}-{span:.3f}))/{span:.3f},0,1),3)"
+
+
+def _fade_alpha(start: float, end: float, span: float = 0.3) -> str:
+    """drawtext alpha expression fading in over `span` after `start` and out over `span` before `end`."""
+    return f"clip(min((t-{start:.3f})/{span:.3f},({end:.3f}-t)/{span:.3f}),0,1)"
+
+
+def build_motion_graphics_command(
+    video_path: Union[str, Path],
+    graphic_elements: list[dict[str, Any]],
+    output_path: Union[str, Path],
+    use_gpu: Optional[bool] = None,
+    target_resolution: Optional[str] = None,
+    is_shorts: bool = False,
+    fps: int = 30,
+) -> list[str]:
+    """Build an FFmpeg command compositing animated motion graphics (SPEC-035) onto a video.
+
+    Everything is drawn natively by FFmpeg (`color` sources + `overlay`, and `drawtext`) with time-based
+    expressions for easing, so no extra rendering dependency is required. Each element dict carries:
+    `graphic_type`, `start_time`, `end_time`, `text`, `subtext`, `accent_color` and `secondary_color`.
+
+    Args:
+        video_path: Source video file path (already rendered at the target resolution).
+        graphic_elements: Motion graphic element dicts (see `MotionGraphicsPlan.to_dict_list`).
+        output_path: Destination path for the output video.
+        use_gpu: Optional GPU hardware encoding override.
+        target_resolution: Video resolution string, e.g. '1080x1920'.
+        is_shorts: Whether the target format is a vertical YouTube Short.
+        fps: Frame rate of the generated graphic layers (matches the normalized 30fps render).
+
+    Returns:
+        List of FFmpeg command arguments.
+
+    Raises:
+        ValueError: If paths are empty or there is no drawable element.
+    """
+    str_video = str(video_path).strip()
+    str_out = str(output_path).strip()
+    if not str_video:
+        raise ValueError("video_path cannot be empty.")
+    if not str_out:
+        raise ValueError("output_path cannot be empty.")
+    if not graphic_elements:
+        raise ValueError("graphic_elements list cannot be empty.")
+
+    is_shorts_mode = is_shorts or (
+        target_resolution is not None and str(target_resolution).strip().lower() == "1080x1920"
+    )
+    default_res = "1080x1920" if is_shorts_mode else "1920x1080"
+    res_match = re.fullmatch(r"(\d+)x(\d+)", str(target_resolution or default_res).strip().lower())
+    width, height = (int(res_match.group(1)), int(res_match.group(2))) if res_match else (
+        (1080, 1920) if is_shorts_mode else (1920, 1080)
+    )
+    unit = min(width, height) / 1080.0
+    margin = int(round(width * 0.05))
+    zones = _MOTION_ZONES_SHORTS if is_shorts_mode else _MOTION_ZONES_LANDSCAPE
+
+    filters: list[str] = []
+    state = {"label": "0:v", "n": 0}
+
+    def next_label() -> str:
+        state["n"] += 1
+        return f"v{state['n']}"
+
+    def add_layer(color_src: str, start: float, end: float, x_expr: str, y_expr: str,
+                  fade_span: Optional[float] = 0.25) -> None:
+        """Add a solid colour layer overlaid on the running video between start and end."""
+        idx = state["n"] + 1
+        life = end - start
+        chain = f"{color_src}:r={fps}:d={life + 0.1:.3f},format=rgba"
+        if fade_span:
+            span = min(fade_span, life / 3.0)
+            chain += (
+                f",fade=t=in:st=0:d={span:.3f}:alpha=1"
+                f",fade=t=out:st={life - span:.3f}:d={span:.3f}:alpha=1"
+            )
+        chain += f",setpts=PTS+{start:.3f}/TB[g{idx}]"
+        filters.append(chain)
+        out_label = next_label()
+        filters.append(
+            f"[{state['label']}][g{idx}]overlay=x='{x_expr}':y='{y_expr}':eof_action=pass"
+            f":enable='between(t,{start:.3f},{end:.3f})'[{out_label}]"
+        )
+        state["label"] = out_label
+
+    def add_text(text: str, font: str, size: int, color: str, x_expr: str, y_expr: str,
+                 start: float, end: float, alpha_expr: Optional[str] = None, border: int = 0,
+                 border_color: str = "0x000000", box_color: Optional[str] = None, box_pad: int = 0) -> None:
+        """Chain a drawtext with literal (unexpanded) copy, easing expressions and an optional box."""
+        parts = [
+            f"drawtext=expansion=none:text='{_escape_motion_text(text)}'",
+            font,
+            f"fontsize={size}",
+            f"fontcolor={color}",
+            f"x='{x_expr}'",
+            f"y='{y_expr}'",
+            f"enable='between(t,{start:.3f},{end:.3f})'",
+        ]
+        if border:
+            parts.extend([f"borderw={border}", f"bordercolor={border_color}"])
+        if box_color:
+            parts.extend(["box=1", f"boxcolor={box_color}", f"boxborderw={box_pad}"])
+        if alpha_expr:
+            parts.append(f"alpha='{alpha_expr}'")
+        out_label = next_label()
+        filters.append(f"[{state['label']}]{':'.join(parts)}[{out_label}]")
+        state["label"] = out_label
+
+    drawn = 0
+    ordered = sorted(graphic_elements, key=lambda e: float(e.get("start_time", 0.0)))
+    for element in ordered[:MAX_MOTION_GRAPHIC_ELEMENTS]:
+        g_type = str(element.get("graphic_type", "")).strip().lower()
+        start = max(0.0, float(element.get("start_time", 0.0)))
+        end = float(element.get("end_time", start + 3.0))
+        if end - start < 0.6 or g_type not in zones:
+            continue
+        life = end - start
+        anim_in = min(_MOTION_ANIM_IN, life / 3.0)
+        anim_out = min(_MOTION_ANIM_OUT, life / 3.0)
+        accent = _ffmpeg_color(element.get("accent_color") or "#FF6B00")
+        secondary = _ffmpeg_color(element.get("secondary_color") or "#FFD700")
+        text = str(element.get("text") or "").strip()
+        subtext = str(element.get("subtext") or "").strip()
+        y0 = zones[g_type] * height
+
+        if g_type == "progress_bar":
+            bar_h = max(6, int(round(10 * unit)))
+            add_layer(f"color=c={_ffmpeg_color('#FFFFFF', 0.25)}:s={width}x{bar_h}", start, end, "0", f"{y0:.1f}")
+            add_layer(
+                f"color=c={accent}:s={width}x{bar_h}", start, end,
+                f"-w+w*clip((t-{start:.3f})/{life:.3f},0,1)", f"{y0:.1f}", fade_span=None,
+            )
+            drawn += 1
+            continue
+
+        if not text:
+            continue
+
+        if g_type == "kinetic_title":
+            title = text.upper()
+            font = _drawtext_font_option("Impact")
+            size = _fit_font_size(title, 104 * unit, width * 0.88, 0.5)
+            rise = 60 * unit
+            y_expr = f"{y0:.1f}+{_slide_in(start, anim_in)}*{rise:.1f}"
+            add_text(
+                title, font, size, "white", "(w-text_w)/2", y_expr, start, end,
+                alpha_expr=_fade_alpha(start, end), border=max(4, int(size * 0.06)),
+                border_color="0x000000@0.9",
+            )
+            line_w = int(min(width * 0.8, len(title) * size * 0.5 * 0.6))
+            add_layer(
+                f"color=c={accent}:s={max(line_w, 80)}x{max(6, int(round(12 * unit)))}", start, end,
+                f"(W-w)/2-{_slide_in(start + 0.1, anim_in)}*W+{_slide_out(end, anim_out)}*W",
+                f"{y0 + size * 1.05:.1f}", fade_span=None,
+            )
+
+        elif g_type == "lower_third":
+            font = _drawtext_font_option("Impact")
+            pad = max(10, int(round(16 * unit)))
+            title_size = _fit_font_size(text, 58 * unit, width * 0.80, 0.52)
+            slide = f"{_slide_in(start, anim_in)}*{width}+{_slide_out(end, anim_out)}*{width}"
+            x_text = margin + 10
+            title_h = title_size * _IMPACT_TEXT_H
+            title_box = _ffmpeg_color("#000000", 0.72) if subtext else accent
+            add_text(
+                text, font, title_size, "white" if subtext else "0x111111",
+                f"{x_text}-({slide})", f"{y0:.1f}", start, end,
+                box_color=title_box, box_pad=pad,
+            )
+            block_h = title_h + 2 * pad
+            if subtext:
+                sub_size = _fit_font_size(subtext, 36 * unit, width * 0.80, 0.5)
+                sub_pad = max(8, pad // 2)
+                add_text(
+                    subtext, _drawtext_font_option("Arial Bold"), sub_size, "0x111111",
+                    f"{x_text}-({slide})", f"{y0 + title_h + pad + sub_pad - 1:.1f}", start, end,
+                    box_color=accent, box_pad=sub_pad,
+                )
+                block_h += sub_size * _ARIAL_BOLD_TEXT_H + 2 * sub_pad - 1
+            add_layer(
+                f"color=c={secondary}:s={max(6, int(round(10 * unit)))}x{int(block_h)}", start, end,
+                f"{margin - 6}-({slide})", f"{y0 - pad:.1f}", fade_span=None,
+            )
+
+        elif g_type == "stat_callout":
+            big = text.upper()
+            size = _fit_font_size(big, 150 * unit, width * 0.86, 0.5)
+            pop = 90 * unit
+            p = f"clip((t-{start:.3f})/0.55,0,1)"
+            overshoot = f"(-2.70158*pow({p}-1,3)-1.70158*pow({p}-1,2))"
+            add_text(
+                big, _drawtext_font_option("Impact"), size, accent, str(margin),
+                f"{y0:.1f}+{overshoot}*{pop:.1f}", start, end,
+                alpha_expr=_fade_alpha(start, end, 0.25), border=max(4, int(size * 0.05)),
+                border_color="0x000000@0.9", box_color=_ffmpeg_color("#000000", 0.35),
+                box_pad=max(10, int(round(18 * unit))),
+            )
+            if subtext:
+                label_size = _fit_font_size(subtext, 46 * unit, width * 0.86, 0.5)
+                add_text(
+                    subtext, _drawtext_font_option("Arial Bold"), label_size, "white", str(margin + 6),
+                    f"{y0 + size * _IMPACT_TEXT_H + 18 * unit + 24 * unit:.1f}+{overshoot}*{pop:.1f}", start + 0.12, end,
+                    alpha_expr=_fade_alpha(start + 0.12, end, 0.25), border=3,
+                    border_color="0x000000@0.9",
+                )
+
+        elif g_type == "corner_badge":
+            label = text.upper()
+            size = _fit_font_size(label, 40 * unit, width * 0.5, 0.55)
+            pad = max(10, int(round(14 * unit)))
+            travel = f"({_slide_in(start, anim_in)}+{_slide_out(end, anim_out)})*(text_w+{margin + pad + 40})"
+            add_text(
+                label, _drawtext_font_option("Impact"), size, "0x111111",
+                f"w-text_w-{margin + pad}+{travel}", f"{y0:.1f}", start, end,
+                box_color=_ffmpeg_color(element.get("accent_color") or "#FF6B00", 0.95), box_pad=pad,
+            )
+
+        else:
+            continue
+        drawn += 1
+
+    if drawn == 0:
+        raise ValueError("No valid motion graphic elements to render.")
+
+    ffmpeg_bin = find_ffmpeg_executable()
+    cmd = [
+        ffmpeg_bin,
+        "-y",
+        "-i",
+        str_video,
+        "-filter_complex",
+        ";".join(filters),
+        "-map",
+        f"[{state['label']}]",
+        "-map",
+        "0:a?",
+    ]
+    cmd.extend(get_video_encoder_args(crf=22, preset="fast", use_gpu=use_gpu))
+    cmd.extend(["-c:a", "copy", str_out])
+    return cmd
+
+
 def execute_ffmpeg_command(
     cmd: Sequence[str],
     timeout: float = 300.0,

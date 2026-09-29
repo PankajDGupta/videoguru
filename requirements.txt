@@ -5,6 +5,8 @@ pydantic>=2.0
 opentimelineio>=0.18.0
 openai-whisper>=20231117
 python-dotenv>=1.0.0
+requests>=2.31.0
+mcp>=1.2.0
 
 # Development & Testing
 pytest>=8.0.0

@@ -344,6 +344,11 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="Disable scene-aware stylish text overlays (SPEC-033).",
     )
+    parser.add_argument(
+        "--no-motion-graphics",
+        action="store_true",
+        help="Disable the theme-related animated motion graphics composited into the video (SPEC-035).",
+    )
 
     # Phase VII — Root Workflow Pipeline Arguments (SPEC-025)
     parser.add_argument(
@@ -364,6 +369,45 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         default=True,
         help="Auto-approve review draft during pipeline execution (default: True).",
+    )
+
+    # Google Photos Integration (SPEC-034)
+    parser.add_argument(
+        "--fetch-photos",
+        action="store_true",
+        help=(
+            "Download videos from Google Photos to input_videos/ before running the pipeline. "
+            "Uses OAuth2 browser flow on first run (saves token.json for future runs)."
+        ),
+    )
+    parser.add_argument(
+        "--photos-date",
+        type=str,
+        default=None,
+        metavar="YYYY-MM-DD",
+        help=(
+            "Download videos for a specific date from Google Photos (e.g. '2026-09-27'). "
+            "Defaults to today when --fetch-photos is used without --photos-start/--photos-end."
+        ),
+    )
+    parser.add_argument(
+        "--photos-start",
+        type=str,
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="Start of date range for Google Photos video download (inclusive).",
+    )
+    parser.add_argument(
+        "--photos-end",
+        type=str,
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="End of date range for Google Photos video download (inclusive). Defaults to --photos-start if omitted.",
+    )
+    parser.add_argument(
+        "--picker",
+        action="store_true",
+        help="Open the interactive Google Photos Picker UI in browser to select videos.",
     )
 
     parser.add_argument(
@@ -450,6 +494,67 @@ def main() -> None:
     if args.info:
         print_project_info()
         return
+
+    # Google Photos Integration (SPEC-034) — download before any pipeline step
+    if args.fetch_photos or args.photos_date or args.photos_start or args.photos_end or args.picker:
+        from datetime import date
+        from tools.google_photos_downloader import download_from_google_photos
+
+        start_date: date | None = None
+        end_date: date | None = None
+
+        if args.photos_date:
+            start_date = date.fromisoformat(args.photos_date)
+            end_date = start_date
+        if args.photos_start:
+            start_date = date.fromisoformat(args.photos_start)
+        if args.photos_end:
+            end_date = date.fromisoformat(args.photos_end)
+
+        # Default: today
+        if start_date is None:
+            start_date = date.today()
+
+        print("=" * 60)
+        print("VideoGuru: Google Photos Video Downloader (SPEC-034)")
+        print(f"Date Range:   {start_date.isoformat()} → {(end_date or start_date).isoformat()}")
+        print(f"Destination:  {settings.MEDIA_INPUT_DIR}")
+        print(f"Picker Mode:  {'Interactive UI' if args.picker else 'Auto (Search with Picker fallback)'}")
+        print("=" * 60)
+
+        try:
+            result = download_from_google_photos(
+                start_date=start_date,
+                end_date=end_date,
+                dest_dir=settings.MEDIA_INPUT_DIR,
+                force_picker=args.picker,
+            )
+            if result.total_new == 0 and result.skipped == 0:
+                print("⚠️  No videos found in Google Photos for the specified date range.")
+            elif result.total_new > 0:
+                print(f"\n✅ Downloaded {result.total_new} new video(s):")
+                for p in result.downloaded:
+                    size_mb = p.stat().st_size / (1024 * 1024)
+                    print(f"   • {p.name} ({size_mb:.2f} MB)")
+            if result.skipped:
+                print(f"⏭️  Skipped {result.skipped} video(s) already in input_videos/")
+            if result.failed:
+                print(f"❌ Failed to download {result.failed} video(s):")
+                for err in result.errors:
+                    print(f"   • {err}")
+            print("-" * 60)
+            print(result.summary())
+            print("=" * 60)
+        except FileNotFoundError as exc:
+            print(f"\n❌ Setup Error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as exc:
+            print(f"\n❌ Google Photos download failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+
+        # If --fetch-photos was the only flag, stop here
+        if not (args.pipeline or args.curate or args.ingest_dir):
+            return
 
     if args.scan_dir:
         from tools.directory_scanner import scan_local_directory_with_metadata
@@ -1150,6 +1255,9 @@ def main() -> None:
             if args.no_overlay_text:
                 state["enable_overlay_text"] = False
 
+            if args.no_motion_graphics:
+                state["enable_motion_graphics"] = False
+
             if args.music_file:
                 state["music_path"] = args.music_file
 
@@ -1169,12 +1277,14 @@ def main() -> None:
                 target_resolution=state.get("target_resolution"),
                 enable_captions=state.get("enable_captions"),
                 enable_overlay_text=state.get("enable_overlay_text"),
+                enable_motion_graphics=state.get("enable_motion_graphics"),
             )
 
             print("🎬 Final Render Completed Successfully!")
             print(f"- Final Video:    {render_res['final_video_path']}")
             print(f"- Transitions:    {render_res['transition_video_path']}")
             print(f"- Overlay Text:   {'Applied' if render_res.get('has_overlay_text') else 'None (skipped)'}")
+            print(f"- Motion Graphics: {'Applied' if render_res.get('has_motion_graphics') else 'None (skipped)'}")
             print(f"- Audio Ducking:  {'Applied' if render_res['has_ducking'] else 'None (skipped)'}")
             print(f"- Captions:       {'Burned-in' if render_res['has_captions'] else 'None (skipped)'}")
             if render_res.get("srt_path"):
@@ -1218,6 +1328,9 @@ def main() -> None:
 
         if args.no_overlay_text:
             initial_state["enable_overlay_text"] = False
+
+        if args.no_motion_graphics:
+            initial_state["enable_motion_graphics"] = False
 
         if args.music_file:
             initial_state["music_path"] = args.music_file

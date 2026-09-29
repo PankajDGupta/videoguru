@@ -1,6 +1,6 @@
 # VideoGuru — Progress Tracker
 
-> **Last Updated:** 2026-09-08
+> **Last Updated:** 2026-09-28
 >
 > Track the completion status of each spec. Update this file as work progresses.
 
@@ -120,6 +120,9 @@
 | SPEC-031 | Overlay Text Agent (YouTube Shorts Engagement) | ✅ | Antigravity | Implemented `OverlayTextAgent` in `agents/overlay_text.py`, Pydantic models in `schemas/overlay_text.py` (`OverlayTextStyle`, `OverlayTextEntry`, `OverlayTextPlan`, `TextPosition`, `YOUTUBE_SHORTS_COLORS`), FFmpeg drawtext command builder `build_drawtext_overlay_command()` in `rendering/ffmpeg_builder.py`, tools in `tools/overlay_text_tools.py` (`generate_overlay_text_plan`, `generate_overlay_texts_with_gemini`, `burn_overlay_text`, `_compute_cut_timeline_offsets`), integrated Step 1b into `EnhancementRenderingAgent.execute_rendering_pipeline()`, 44 unit tests passing in `tests/test_overlay_text.py` (672 total tests passing) |
 | SPEC-032 | YouTube Shorts Format & Safe-Zone Text Burning (1080x1920) | ✅ | Antigravity | Implemented 1080x1920 resolution support in `config/settings.py` (`VIDEO_TYPE`, `TARGET_RESOLUTION`), dynamic resolution in `tools/transition_renderer.py`, Shorts UI safe-zone text burning in `rendering/ffmpeg_builder.py` (elevated `MarginV=220`, `FontSize=24pt`, safe drawtext Y bounds), responsive font scaling in `tools/overlay_text_tools.py` (46px hook, 36px scene), `EnhancementRenderingAgent` pipeline propagation, auto-detection in `record_theme`, CLI `--shorts` & `--resolution` flags in `main.py`, 19 unit & integration tests passing in `tests/test_youtube_shorts.py` (691 total tests passing) |
 | SPEC-033 | Scene-Aware Text Overlays & Subtitle Controls | ✅ | Antigravity | Disabled Whisper captions by default (`ENABLE_CAPTIONS=False`) to prevent unwanted ambient speech transcription, added opt-in `--captions` / `--subtitles` CLI flags; enabled scene-aware engaging text overlays (`ENABLE_OVERLAY_TEXT=True`) with Gemini vision cut rationale and clip metadata awareness; hardened Windows `subprocess.run` with UTF-8 decoding and escaped FFmpeg filtergraph commas; 12 unit tests passing in `tests/test_scene_text_overlays.py` (713 total tests passing) |
+| SPEC-034 | Google Photos Integration — OAuth2 Download & Picker API | ✅ | Antigravity | `services/google_photos_client.py` implements `GooglePhotosClient` with OAuth2 browser flow + `token.json` caching + silent refresh, Google Photos Picker API session orchestration (`create_picker_session`, `poll_picker_session`, `list_picked_media_items`, `delete_picker_session`), paginated `mediaItems:search` with date-range filter, and streaming download with media-item-ID deduplication (`.gphotos_downloaded_ids.json`). `tools/google_photos_downloader.py` wraps as ADK tool `download_videos_from_google_photos` with automatic fallback to Picker API on Google 403 policy restrictions. CLI flags `--fetch-photos`, `--picker`, `--photos-date`, `--photos-start`, `--photos-end` added to `main.py`. `GOOGLE_PHOTOS_CREDENTIALS` / `GOOGLE_PHOTOS_TOKEN_FILE` settings added to `config/settings.py` and `.env.example`. `requests>=2.31.0` added to `requirements.txt`. 40 unit tests passing in `tests/test_google_photos_downloader.py` (753 total tests passing). |
+| SPEC-035 | Theme-Related Motion Graphics | ✅ | Antigravity | Gemini analyzes the rendered video and designs theme-related animated graphics (`kinetic_title`, `lower_third`, `stat_callout`, `corner_badge`, `progress_bar`) with a theme-matched colour palette; `schemas/motion_graphics.py`, `build_motion_graphics_command()` in `rendering/ffmpeg_builder.py` (pure-FFmpeg eased animation, Shorts safe zones, safe text escaping), `tools/motion_graphics_tools.py` (Gemini structured-output analysis with guaranteed upload cleanup, plan sanitizer, fact-safe offline fallback, `burn_motion_graphics`, ADK tool `generate_motion_graphics_plan`); integrated as Step 1c in `EnhancementRenderingAgent` with graceful degradation; `ENABLE_MOTION_GRAPHICS` setting and `--no-motion-graphics` CLI flag; 70 unit & real-FFmpeg integration tests passing in `tests/test_motion_graphics.py` (823 total tests passing). Not yet exercised against the live Gemini API. |
+| SPEC-036 | MCP Server Interface | ✅ | Claude | `mcp_server.py` stdio MCP server (mcp SDK) exposing `start_pipeline` (background job) + `get_job_status`/`list_jobs`/`list_outputs` and granular tools (scan, metadata, manifest, audio ducking, captions, Google Photos); stdout guarded so library prints cannot corrupt the protocol; `on_stage` progress callback added to `RootWorkflowAgent.run_pipeline_async`; 14 tests in `tests/test_mcp_server.py` incl. a real offline pipeline job and a verified stdio handshake (837 total tests passing). Not yet exercised via a live Claude client. |
 
 ---
 
@@ -127,8 +130,8 @@
 
 | Metric | Count |
 |--------|-------|
-| **Total Specs** | 33 |
-| **Completed** | 33 |
+| **Total Specs** | 36 |
+| **Completed** | 36 |
 | **In Progress** | 0 |
 | **Blocked** | 0 |
 | **Not Started** | 0 |

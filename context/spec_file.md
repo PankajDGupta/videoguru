@@ -370,3 +370,63 @@
   - Properly escape commas with `\,` in `build_drawtext_overlay_command` for text content and timeline expressions (`gte(t\,{start})*lte(t\,{end})`) to prevent filtergraph parsing errors.
 - Unit and integration tests in `tests/test_scene_text_overlays.py`.
 
+### SPEC-034: Google Photos Integration — OAuth2 Video Download
+
+- Implement `services/google_photos_client.py` — a standalone OAuth2 + REST client:
+  - `_TokenCache` class persisting `access_token`, `refresh_token`, and `expires_at` in a JSON file (`token.json`).
+  - `GooglePhotosClient.from_credentials_file(credentials_json, token_file)` factory loading a Desktop OAuth2 credentials JSON.
+  - `authenticate()` method: reuses cached token, silently refreshes via `refresh_token`, or runs full browser OAuth2 consent flow via `http.server.HTTPServer` on `localhost:8080`.
+  - `iter_videos_for_date(target_date)` / `iter_videos_for_date_range(start, end)` — paginated `mediaItems:search` with `dateFilter` + `mediaTypeFilter=VIDEO` via Google Photos Library API v1.
+  - `download_video(media_item, dest_dir, skip_if_id_cached, id_cache_file)` — streaming download using `baseUrl=dv`, deduplication via `.gphotos_downloaded_ids.json`.
+  - `revoke_token()` — revokes the access token and clears the local cache.
+- Implement `tools/google_photos_downloader.py` — ADK tool wrapper:
+  - `download_from_google_photos(start_date, end_date, dest_dir, credentials_json, token_file)` — resolves defaults, connects client, iterates items, returns `DownloadResult`.
+  - `download_videos_from_google_photos(start_date, end_date)` — ADK tool returning structured dict with `success`, `downloaded_count`, `skipped_count`, `failed_count`, `downloaded_paths`, `summary`, `errors`.
+- Configuration:
+  - `GOOGLE_PHOTOS_CREDENTIALS` and `GOOGLE_PHOTOS_TOKEN_FILE` settings in `config/settings.py`.
+  - `.env.example` section documenting Google Cloud Console credential setup steps.
+  - `requests>=2.31.0` added to `requirements.txt`.
+- CLI (in `main.py`):
+  - `--fetch-photos` — download today's videos from Google Photos to `input_videos/`.
+  - `--photos-date YYYY-MM-DD` — download for a specific date.
+  - `--photos-start YYYY-MM-DD` / `--photos-end YYYY-MM-DD` — custom date range.
+  - Composable: `--fetch-photos --pipeline` downloads then immediately runs the editing pipeline.
+- Unit tests in `tests/test_google_photos_downloader.py` covering token cache, client factory, auth flow, pagination, download deduplication, ADK tool schema, and CLI argument parsing.
+
+### SPEC-035: Theme-Related Motion Graphics
+
+- Analyze the rendered video and composite animated motion graphics that relate to the theme:
+  - New Step 1c in `EnhancementRenderingAgent.execute_rendering_pipeline()` (after overlay text, before audio ducking); analyzes the transition render so graphic timing matches the final timeline.
+  - Graceful degradation: any analysis or FFmpeg failure logs a warning and rendering continues without graphics.
+- Implement Pydantic schemas in `schemas/motion_graphics.py`:
+  - `MotionGraphicType`: `kinetic_title`, `lower_third`, `stat_callout`, `corner_badge`, `progress_bar`.
+  - `MotionGraphicElement`: type, start/end time, text, subtext, accent colour, cut index, rationale; validates timing, requires copy for text graphics, strips emoji/backslashes, normalises hex colours.
+  - `MotionGraphicsPlan`: elements + Gemini-chosen theme palette (`primary_color`, `secondary_color`) + `content_summary`; `to_dict_list()` / `from_list()` for session state.
+- Add `build_motion_graphics_command()` to `rendering/ffmpeg_builder.py`:
+  - Pure-FFmpeg animation: `color` sources + `overlay`, and `drawtext` with `expansion=none`, driven by time-based easing expressions (slide in/out, rise, overshoot pop, fades, growing bar).
+  - Per-format zones keep Shorts graphics inside the safe area and clear of the overlay text position.
+  - Escapes copy safely (colon, apostrophe -> typographic, backslash stripped, no `%` expansion); rejects invalid colours and undrawable elements; caps at 14 elements.
+- Implement `tools/motion_graphics_tools.py`:
+  - `analyze_video_for_motion_graphics`: uploads a small silent proxy to Gemini, requests structured JSON (`_GeminiMotionPlan`), always deletes the uploaded file, skips malformed graphics.
+  - `build_motion_graphics_prompt`: theme, cut timeline with scene rationales, existing overlay text, per-type copy limits, no-emoji / no-invented-facts / no-speech-transcription rules.
+  - `sanitize_motion_graphics_plan`: clamps to the video, enforces min/max lifetimes, trims copy at word boundaries, removes same-type and shared-zone overlaps, caps density (progress bar exempt).
+  - Deterministic fact-safe fallback plan for offline mode, missing API key or API errors.
+  - `burn_motion_graphics` and ADK tool `generate_motion_graphics_plan` (stores `session.state["motion_graphics"]`).
+- Configuration and CLI:
+  - `ENABLE_MOTION_GRAPHICS` (default `true`) in `config/settings.py` and `.env.example`; `--no-motion-graphics` in `main.py`; `state["enable_motion_graphics"]` and `enable_motion_graphics=` argument on the rendering agent.
+- Unit and integration tests (including real FFmpeg renders) in `tests/test_motion_graphics.py`.
+
+
+### SPEC-036: MCP Server Interface
+
+- Expose VideoGuru to MCP clients (Claude Code, Claude Desktop) over stdio via `mcp_server.py`:
+  - Uses the official `mcp` SDK (`MCPServer` on mcp 2.x, `FastMCP` fallback on 1.x).
+  - stdout is the transport: logging goes to stderr (`configure_logging`) and every tool body runs with `sys.stdout` redirected to stderr.
+- Implement a background `JobManager` for long-running runs:
+  - `start_pipeline` validates input (directory, video files, theme, music file), builds the same `initial_state` as `main.py --pipeline`, and runs `RootWorkflowAgent.run_pipeline_async` as an asyncio task with `auto_approve=True`.
+  - `get_job_status` / `list_jobs` report status (`running`/`completed`/`failed`), current stage, elapsed time, and result paths (`final_video_path`, `otio_file_path`, `review_status`).
+  - `RootWorkflowAgent.run_pipeline_async` gains an optional `on_stage` callback fired on each agent transition.
+- Granular tools: `scan_media_directory`, `get_clip_metadata`, `build_clip_manifest`, `apply_audio_ducking`, `generate_captions`, `download_from_google_photos` (returns an "authorization required" error when no OAuth token exists instead of blocking on a browser flow), and `list_outputs`.
+- Errors are returned as `{success: false, error}` instead of raised.
+- Add `mcp` to `requirements.txt` and `pyproject.toml`; document registration in `README.md` and `.mcp.json.example`.
+- Unit and integration tests in `tests/test_mcp_server.py` (tool registration, job lifecycle, stdout cleanliness, error paths, real offline pipeline job on synthetic FFmpeg clips).

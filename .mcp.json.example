@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "videoguru": {
+      "command": "G:\pankaj\projects\workspaces\videoguru\.venv\Scripts\python.exe",
+      "args": ["G:\pankaj\projects\workspaces\videoguru\mcp_server.py"],
+      "cwd": "G:\pankaj\projects\workspaces\videoguru"
+    }
+  }
+}

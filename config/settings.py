@@ -60,6 +60,18 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")
 HW_ACCEL = os.getenv("HW_ACCEL", "auto").strip().lower()
 
+# Google Photos Integration (SPEC-034)
+# Path to the OAuth2 Desktop credentials.json downloaded from Google Cloud Console
+GOOGLE_PHOTOS_CREDENTIALS = os.getenv(
+    "GOOGLE_PHOTOS_CREDENTIALS",
+    str(BASE_DIR / "credentials.json"),
+)
+# Path to the persisted OAuth2 token cache (auto-created after first browser login)
+GOOGLE_PHOTOS_TOKEN_FILE = os.getenv(
+    "GOOGLE_PHOTOS_TOKEN_FILE",
+    str(BASE_DIR / "token.json"),
+)
+
 # Video Type & Resolution Configuration (SPEC-032)
 VIDEO_TYPE = os.getenv("VIDEO_TYPE", "landscape").strip().lower()
 SUPPORTED_VIDEO_TYPES: frozenset[str] = frozenset({
@@ -80,6 +92,9 @@ TARGET_RESOLUTION = os.getenv("TARGET_RESOLUTION", RESOLUTION_MAP.get(VIDEO_TYPE
 # Subtitles (speech-to-text via Whisper) are disabled by default as creators prefer clean video with stylish overlays
 ENABLE_CAPTIONS = os.getenv("ENABLE_CAPTIONS", "false").strip().lower() in {"true", "1", "yes", "on"}
 ENABLE_OVERLAY_TEXT = os.getenv("ENABLE_OVERLAY_TEXT", "true").strip().lower() in {"true", "1", "yes", "on"}
+
+# Theme-related animated motion graphics designed from a Gemini analysis of the video (SPEC-035)
+ENABLE_MOTION_GRAPHICS = os.getenv("ENABLE_MOTION_GRAPHICS", "true").strip().lower() in {"true", "1", "yes", "on"}
 
 try:
     MAX_LOOP_ITERATIONS = int(os.getenv("MAX_LOOP_ITERATIONS", "10"))
@@ -245,9 +260,10 @@ def reload_settings(env_file: Optional[Union[str, Path]] = None) -> None:
     global MEDIA_INPUT_DIR, STAGING_DIR, OUTPUT_DIR
     global GEMINI_API_KEY, GEMINI_MODEL, WHISPER_MODEL, MAX_LOOP_ITERATIONS, HW_ACCEL
     global VIDEO_TYPE, TARGET_RESOLUTION
-    global ENABLE_CAPTIONS, ENABLE_OVERLAY_TEXT
+    global ENABLE_CAPTIONS, ENABLE_OVERLAY_TEXT, ENABLE_MOTION_GRAPHICS
     global APP_NAME, WEB_HOST, WEB_PORT, DEFAULT_USER_ID
     global LOG_LEVEL, LOG_JSON, LOG_FILE
+    global GOOGLE_PHOTOS_CREDENTIALS, GOOGLE_PHOTOS_TOKEN_FILE
 
     if env_file:
         load_dotenv(env_file, override=True)
@@ -266,6 +282,7 @@ def reload_settings(env_file: Optional[Union[str, Path]] = None) -> None:
 
     ENABLE_CAPTIONS = os.getenv("ENABLE_CAPTIONS", "false").strip().lower() in {"true", "1", "yes", "on"}
     ENABLE_OVERLAY_TEXT = os.getenv("ENABLE_OVERLAY_TEXT", "true").strip().lower() in {"true", "1", "yes", "on"}
+    ENABLE_MOTION_GRAPHICS = os.getenv("ENABLE_MOTION_GRAPHICS", "true").strip().lower() in {"true", "1", "yes", "on"}
 
     try:
         MAX_LOOP_ITERATIONS = int(os.getenv("MAX_LOOP_ITERATIONS", "5"))
@@ -285,5 +302,14 @@ def reload_settings(env_file: Optional[Union[str, Path]] = None) -> None:
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
     LOG_JSON = os.getenv("LOG_JSON", "true").strip().lower() in {"true", "1", "yes", "on"}
     LOG_FILE = os.getenv("LOG_FILE", None)
+
+    GOOGLE_PHOTOS_CREDENTIALS = os.getenv(
+        "GOOGLE_PHOTOS_CREDENTIALS",
+        str(BASE_DIR / "credentials.json"),
+    )
+    GOOGLE_PHOTOS_TOKEN_FILE = os.getenv(
+        "GOOGLE_PHOTOS_TOKEN_FILE",
+        str(BASE_DIR / "token.json"),
+    )
 
 

@@ -27,9 +27,11 @@ from schemas.edl import EditDecisionList
 from tools.audio_ducking import apply_audio_ducking
 from tools.curation_tools import get_edl_from_state
 from tools.ingestion_tools import get_clip_manifest_from_state
+from tools.motion_graphics_tools import analyze_video_for_motion_graphics, burn_motion_graphics
 from tools.overlay_text_tools import burn_overlay_text, generate_overlay_texts_with_gemini, _generate_mock_overlay_texts
 from tools.transition_renderer import render_with_transitions
 from tools.whisper_captioning import generate_captions
+from schemas.motion_graphics import MotionGraphicsPlan
 from schemas.overlay_text import OverlayTextPlan
 
 logger = logging.getLogger(__name__)
@@ -39,13 +41,15 @@ ENHANCEMENT_RENDERING_INSTRUCTION = (
     "Your responsibility is Phase V High-Fidelity Rendering & Post-Production:\n"
     "1. Render the approved Edit Decision List (EDL) using the `render_with_transitions` tool to apply smooth "
     "   video xfade transitions and audio crossfades.\n"
-    "2. If background music is provided, invoke `apply_audio_ducking` using sidechain compression to automatically "
+    "2. Analyze the rendered video and composite theme-related animated motion graphics (kinetic titles, lower "
+    "   thirds, stat callouts, badges and a progress bar) timed to the scenes they describe.\n"
+    "3. If background music is provided, invoke `apply_audio_ducking` using sidechain compression to automatically "
     "   duck background music levels whenever dialogue/vocals occur.\n"
-    "3. Invoke `generate_captions` to transcribe dialogue using Whisper and burn clean, high-retention subtitles "
+    "4. Invoke `generate_captions` to transcribe dialogue using Whisper and burn clean, high-retention subtitles "
     "   directly into the video frames.\n"
-    "4. Ensure the final broadcast-quality .mp4 is stored in the output directory, and save its path into "
+    "5. Ensure the final broadcast-quality .mp4 is stored in the output directory, and save its path into "
     "   session.state['final_video_path'].\n"
-    "5. Provide the user with a concise summary of the rendered video, including resolution, duration, and file path."
+    "6. Provide the user with a concise summary of the rendered video, including resolution, duration, and file path."
 )
 
 
@@ -100,6 +104,7 @@ class EnhancementRenderingAgent(Agent):
         target_resolution: Optional[str] = None,
         enable_captions: Optional[bool] = None,
         enable_overlay_text: Optional[bool] = None,
+        enable_motion_graphics: Optional[bool] = None,
     ) -> dict[str, Any]:
         """Execute the end-to-end rendering pipeline deterministically.
 
@@ -114,6 +119,7 @@ class EnhancementRenderingAgent(Agent):
             target_resolution: Optional target resolution ('1080x1920' or '1920x1080').
             enable_captions: Optional boolean to enable/disable Whisper subtitles (default: False/settings.ENABLE_CAPTIONS).
             enable_overlay_text: Optional boolean to enable/disable stylish overlay text (default: True).
+            enable_motion_graphics: Optional boolean to enable/disable theme-related animated motion graphics (default: True).
 
         Returns:
             Dictionary containing final paths and render metadata:
@@ -283,6 +289,67 @@ class EnhancementRenderingAgent(Agent):
 
         log_render_progress("overlay_text", progress_percent=45.0, output_path=str(overlay_input))
 
+        # 1c. Step 1c: Motion Graphics (Gemini analyzes the rendered video, FFmpeg composites the animation)
+        motion_input = overlay_input
+        has_motion_graphics = False
+
+        effective_enable_motion = enable_motion_graphics
+        if effective_enable_motion is None:
+            effective_enable_motion = state.get(
+                "enable_motion_graphics", getattr(settings, "ENABLE_MOTION_GRAPHICS", True)
+            )
+
+        if not effective_enable_motion:
+            logger.info(
+                "EnhancementRenderingAgent: Motion graphics disabled (enable_motion_graphics=False). Skipping step."
+            )
+        else:
+            try:
+                motion_raw = state.get("motion_graphics")
+                if motion_raw and isinstance(motion_raw, list):
+                    motion_plan = MotionGraphicsPlan.from_list(motion_raw, theme=state.get("theme", ""))
+                else:
+                    # Analyze the transition render: its timeline matches the final video's timing
+                    motion_plan = analyze_video_for_motion_graphics(
+                        transition_path,
+                        state.get("theme", ""),
+                        edl=edl,
+                        transition_duration=transition_duration,
+                        target_resolution=effective_resolution,
+                        is_shorts=is_shorts_mode,
+                        overlay_entries=state.get("overlay_texts") if has_overlay_text else None,
+                        offline=self.offline,
+                    )
+                    state["motion_graphics"] = motion_plan.to_dict_list()
+
+                if motion_plan and len(motion_plan) > 0:
+                    motion_output = staging_dir / "step1c_motion_graphics.mp4"
+                    motion_input = Path(
+                        burn_motion_graphics(
+                            video_path=overlay_input,
+                            motion_plan=motion_plan,
+                            output_path=motion_output,
+                            target_resolution=effective_resolution,
+                            is_shorts=is_shorts_mode,
+                        )
+                    )
+                    has_motion_graphics = True
+                    logger.info(
+                        "EnhancementRenderingAgent: Step 1c (Motion Graphics, %d elements) completed -> %s",
+                        len(motion_plan),
+                        motion_input,
+                    )
+                else:
+                    logger.info("EnhancementRenderingAgent: No motion graphics planned. Skipping step.")
+            except Exception as exc:
+                logger.warning(
+                    "EnhancementRenderingAgent: Motion graphics failed (%s). Continuing without motion graphics.",
+                    exc,
+                )
+                motion_input = overlay_input
+
+        log_render_progress("motion_graphics", progress_percent=55.0, output_path=str(motion_input))
+
         # 3. Step 2: Audio Ducking (if background music exists)
         resolved_music: Optional[Path] = None
         if music_path is not None:
@@ -305,7 +372,7 @@ class EnhancementRenderingAgent(Agent):
                 if resolved_music:
                     break
 
-        ducked_path = overlay_input
+        ducked_path = motion_input
         has_ducking = False
 
         if resolved_music and resolved_music.is_file():
@@ -313,7 +380,7 @@ class EnhancementRenderingAgent(Agent):
             ducked_output = staging_dir / "step2_ducked.mp4"
             try:
                 ducked_path = apply_audio_ducking(
-                    video_path=overlay_input,
+                    video_path=motion_input,
                     music_path=str(resolved_music),
                     output_path=str(ducked_output),
                     tool_context=tool_ctx,
@@ -325,10 +392,10 @@ class EnhancementRenderingAgent(Agent):
                     "EnhancementRenderingAgent: Audio ducking failed (%s). Continuing with un-ducked audio.",
                     exc,
                 )
-                ducked_path = overlay_input
+                ducked_path = motion_input
         else:
             logger.info("EnhancementRenderingAgent: No background music track provided. Skipping ducking.")
-            tool_ctx.state["ducked_video_path"] = overlay_input
+            tool_ctx.state["ducked_video_path"] = motion_input
 
         log_render_progress("ducking", progress_percent=66.0, output_path=str(ducked_path), has_ducking=has_ducking)
 
@@ -399,6 +466,8 @@ class EnhancementRenderingAgent(Agent):
             "transition_video_path": str(transition_path),
             "overlay_text_video_path": str(overlay_input) if has_overlay_text else None,
             "has_overlay_text": has_overlay_text,
+            "motion_graphics_video_path": str(motion_input) if has_motion_graphics else None,
+            "has_motion_graphics": has_motion_graphics,
             "ducked_video_path": str(ducked_path) if has_ducking else None,
             "srt_path": str(srt_path) if srt_path else None,
             "captioned_video_path": str(captioned_path),
@@ -416,11 +485,13 @@ class EnhancementRenderingAgent(Agent):
             captions_str = "Burned-in via Whisper" if result["has_captions"] else "None (skipped)"
 
             overlay_str = "Applied" if result.get("has_overlay_text", False) else "None (skipped)"
+            motion_str = "Applied" if result.get("has_motion_graphics", False) else "None (skipped)"
             report = (
                 "🎬 [Enhancement & Rendering Agent] Rendering Complete!\n\n"
                 f"- Final Video Path: `{final_path}`\n"
                 f"- Transitions: Applied xfade / acrossfade\n"
                 f"- Overlay Text: {overlay_str}\n"
+                f"- Motion Graphics: {motion_str}\n"
                 f"- Background Audio Ducking: {ducking_str}\n"
                 f"- Captions: {captions_str}\n"
                 f"- Status: Ready for broadcast / YouTube upload!"

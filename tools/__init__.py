@@ -23,6 +23,11 @@ from tools.ingestion_tools import (
     ingest_media_directory,
 )
 from tools.intent_tools import get_theme_from_state, record_theme
+from tools.motion_graphics_tools import (
+    analyze_video_for_motion_graphics,
+    burn_motion_graphics,
+    generate_motion_graphics_plan,
+)
 from tools.otio_converter import (
     _create_otio_timeline,
     edl_to_otio,
@@ -59,16 +64,24 @@ from tools.whisper_captioning import (
     transcribe_audio_whisper,
     write_srt_file,
 )
+from tools.google_photos_downloader import (
+    download_from_google_photos,
+    download_videos_from_google_photos,
+)
 
 
 __all__ = [
+    "download_from_google_photos",
+    "download_videos_from_google_photos",
     "SUPPORTED_VIDEO_EXTENSIONS",
     "_create_otio_timeline",
     "analyze_clip",
+    "analyze_video_for_motion_graphics",
     "apply_audio_ducking",
     "assemble_edl_from_manifest",
     "build_analysis_prompt",
     "build_clip_manifest",
+    "burn_motion_graphics",
     "burn_overlay_text",
     "burn_subtitles_to_video",
     "calculate_hook_metrics",
@@ -83,6 +96,7 @@ __all__ = [
     "find_ffprobe_executable",
     "format_timestamp_srt",
     "generate_captions",
+    "generate_motion_graphics_plan",
     "generate_overlay_text_plan",
     "generate_overlay_texts_with_gemini",
     "get_clip_manifest_from_state",
